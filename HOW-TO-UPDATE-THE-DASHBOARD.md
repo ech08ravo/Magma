@@ -18,6 +18,24 @@ This guide covers refreshing the dashboard with new CALM data for **SEBE** cours
 
 **Check:** the folder should contain the three required files above with exactly those names.
 
+The Magma folder should then look like this. The scripts and the dated folders sit side by side; Step 2 creates the `SEBE` folder and statistics workbook.
+
+```text
+Magma/
+├── update-dashboard-data.py
+├── extract-faculty.py
+├── make-statistics.py
+├── Extract SEBE.command            (Mac launcher)
+├── Extract SEBE.bat                (Windows launcher)
+├── CALM-dashboard-20261027/        (an earlier export)
+└── CALM-dashboard-20261106/        (the new export)
+    ├── Student Pathways by Units.xlsx
+    ├── Units by Assessment Tasks.xlsx
+    ├── Course Data.xlsx
+    ├── SEBE/                       (created in Step 2: the 3 CSVs for the dashboard)
+    └── SEBE-statistics.xlsx        (created in Step 2)
+```
+
 ---
 
 ## Step 2: Process the new upload set for the dashboard
