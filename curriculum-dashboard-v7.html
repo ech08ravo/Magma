@@ -564,8 +564,8 @@
   .timeline-list-table td { color: #303842; }
   .timeline-list-table td.nowrap { white-space: nowrap; }
   .timeline-list-table td.guide-week-cell { min-width: 5.5em; max-width: 10em; white-space: normal; background: #fff7eb; color: #683900; font-weight: 600; }
-  .timeline-list-table td.weight-cell { min-width: 5em; max-width: 12em; white-space: normal; overflow-wrap: anywhere; }
-  .timeline-list-table td.assessment-cell { min-width: 220px; }
+  /* Assessment title, Weight, Mode and AoL task type: equal 250px columns, text wraps. */
+  .timeline-list-table .wide-cell { width: 250px; min-width: 250px; max-width: 250px; white-space: normal; overflow-wrap: anywhere; }
   .timeline-list-table tbody tr:nth-child(even) { background: #f7f8fa; }
   .timeline-summary-intro { color: #454d57; font-size: 11px; line-height: 1.5; margin: 0 0 10px; }
   .timeline-summary-table th, .timeline-summary-table td { text-align: center; }
@@ -3891,10 +3891,10 @@ function renderAssessmentTimeline() {
     { key: 'Unit Code', label: 'Unit', className: 'nowrap' },
     { key: 'AT Number', label: 'AT', className: 'nowrap' },
     ...(unitGuideData.size ? [{ key: 'Guide Week', label: 'Week (guide)', className: 'guide-week-cell' }] : []),
-    { key: 'Assessment Title (general task type)', label: 'Assessment title', className: 'assessment-cell' },
-    { key: 'Weighting', label: 'Weight', className: 'weight-cell' },
-    { key: 'Mode', label: 'Mode', className: '' },
-    { key: 'AoL Task Type', label: 'AoL task type', className: '' },
+    { key: 'Assessment Title (general task type)', label: 'Assessment title', className: 'wide-cell' },
+    { key: 'Weighting', label: 'Weight', className: 'wide-cell' },
+    { key: 'Mode', label: 'Mode', className: 'wide-cell' },
+    { key: 'AoL Task Type', label: 'AoL task type', className: 'wide-cell' },
     { key: 'AoL', label: 'AoL?', className: 'nowrap' },
     { key: 'Hurdle', label: 'Hurdle', className: 'nowrap' },
     { key: 'GLOs', label: 'GLOs', className: 'nowrap' }
@@ -3910,7 +3910,7 @@ function renderAssessmentTimeline() {
     </div>
     <div class="timeline-list-scroll">
       <table class="timeline-list-table" id="timeline-list-table">
-        <thead><tr>${listColumns.map(column => `<th scope="col">${column.label}</th>`).join('')}</tr></thead>
+        <thead><tr>${listColumns.map(column => `<th scope="col"${column.className === 'wide-cell' ? ' class="wide-cell"' : ''}>${column.label}</th>`).join('')}</tr></thead>
         <tbody>${placements.map((placement, index) => {
           const row = exportRows[index];
           const gloList = placement.at.gloIds.map(id => `GLO${id + 1}`).join(', ') || 'None recorded';
