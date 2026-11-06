@@ -147,6 +147,14 @@ Use **Table** beside Rings and Matrix for a text-based list of units. It follows
 
 The dashboard processes selected CSVs and PDFs in the browser; it does not upload those files. Data is held in the open page and should be reselected after closing or reloading it. **Clear guides** removes guide data from the current page. The CALM data-processing scripts are a separate maintainer workflow and should not be distributed unless recipients are expected to update the data.
 
+### Setting up someone else to update the data (Mac or Windows)
+
+Send `Magma-Extraction-Kit.zip` instead of `Curriculum-Dashboard-v7.zip`. It holds the dashboard, `lib`, the three scripts, both launchers and these guides. It holds no CALM data or unit guides.
+
+1. Unzip it anywhere. The unzipped `Magma-Extraction-Kit` folder is their Magma folder.
+2. On Windows, install Python 3 from python.org with **Add python.exe to PATH** ticked.
+3. From then on, follow Steps 1 to 3 in that folder: add a dated `CALM-dashboard-YYYYMMDD` folder, double-click `Extract SEBE.bat` (Windows) or `Extract SEBE.command` (Mac), then load the `SEBE` CSVs into the dashboard.
+
 ### Version 7 beta: optional local unit guides
 
 1. On the upload screen, leave **Also scan a local Unit-Guides folder** unchecked to use CALM data only. To add guide information, check it and choose the folder containing the PDFs. The browser asks you to select the folder; the dashboard does not search your computer automatically.
