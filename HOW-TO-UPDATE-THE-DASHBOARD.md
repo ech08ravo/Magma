@@ -149,9 +149,9 @@ The dashboard processes selected CSVs and PDFs in the browser; it does not uploa
 
 ### Setting up someone else to update the data (Mac or Windows)
 
-Send `Magma-Extraction-Kit.zip` instead of `Curriculum-Dashboard-v7.zip`. It holds the dashboard, `lib`, the three scripts, both launchers and these guides. It holds no CALM data or unit guides.
+Send `Curriculum-Dashboard.zip` instead of `Curriculum-Dashboard-v7.zip`. It holds the dashboard, `lib`, the three scripts, both launchers and these guides. It holds no CALM data or unit guides.
 
-1. Unzip it anywhere. The unzipped `Magma-Extraction-Kit` folder is their Magma folder.
+1. Unzip it anywhere. The unzipped `Curriculum-Dashboard` folder is their Magma folder.
 2. On Windows, install Python 3 from python.org with **Add python.exe to PATH** ticked.
 3. From then on, follow Steps 1 to 3 in that folder: add a dated `CALM-dashboard-YYYYMMDD` folder, double-click `Extract SEBE.bat` (Windows) or `Extract SEBE.command` (Mac), then load the `SEBE` CSVs into the dashboard.
 
