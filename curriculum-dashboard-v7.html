@@ -561,6 +561,8 @@
   .timeline-list-table th, .timeline-list-table td, .timeline-summary-table th, .timeline-summary-table td { border: 1px solid #d7dbe0; padding: 7px 8px; vertical-align: top; }
   .timeline-list-table td { color: #303842; }
   .timeline-list-table td.nowrap { white-space: nowrap; }
+  .timeline-list-table td.guide-week-cell { min-width: 5.5em; max-width: 10em; white-space: normal; background: #fff7eb; color: #683900; font-weight: 600; }
+  .timeline-list-table td.weight-cell { min-width: 5em; max-width: 12em; white-space: normal; overflow-wrap: anywhere; }
   .timeline-list-table td.assessment-cell { min-width: 220px; }
   .timeline-list-table tbody tr:nth-child(even) { background: #f7f8fa; }
   .timeline-summary-intro { color: #454d57; font-size: 11px; line-height: 1.5; margin: 0 0 10px; }
@@ -3650,6 +3652,31 @@ function guideAssessmentNumber(value) {
   return match ? Number(match[0]) : null;
 }
 
+// Guide-sourced weeks for one CALM task, matched by unit code and AT number.
+function guideWeeksForTask(unit, at) {
+  const guide = unitGuideData.get(unit.code);
+  const taskNumber = guideAssessmentNumber(at.number);
+  if (!guide || taskNumber === null) return null;
+  const weeks = [];
+  const seen = new Set();
+  guide.assessments
+    .filter(assessment => assessment.taskNumber === taskNumber)
+    .forEach(assessment => assessment.weeks.forEach(week => {
+      const key = `${week.week}|${week.part || ''}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      weeks.push(week);
+    }));
+  if (!weeks.length) return null;
+  weeks.sort((a, b) => a.week - b.week);
+  return {
+    guide,
+    weeks,
+    label: weeks.map(week => `Wk ${week.week}${week.part ? ` (${week.part})` : ''}`).join(', '),
+    evidence: weeks.map(week => week.evidence).filter(Boolean).join(' · ')
+  };
+}
+
 function timelineGuideWeekRows(records) {
   const rows = [];
   const seen = new Set();
@@ -3861,8 +3888,9 @@ function renderAssessmentTimeline() {
     { key: 'AT Group', label: 'AT group', className: 'nowrap' },
     { key: 'Unit Code', label: 'Unit', className: 'nowrap' },
     { key: 'AT Number', label: 'AT', className: 'nowrap' },
+    ...(unitGuideData.size ? [{ key: 'Guide Week', label: 'Week (guide)', className: 'guide-week-cell' }] : []),
     { key: 'Assessment Title (general task type)', label: 'Assessment title', className: 'assessment-cell' },
-    { key: 'Weighting', label: 'Weight', className: 'nowrap' },
+    { key: 'Weighting', label: 'Weight', className: 'weight-cell' },
     { key: 'Mode', label: 'Mode', className: '' },
     { key: 'AoL Task Type', label: 'AoL task type', className: '' },
     { key: 'AoL', label: 'AoL?', className: 'nowrap' },
@@ -3884,10 +3912,16 @@ function renderAssessmentTimeline() {
         <tbody>${placements.map((placement, index) => {
           const row = exportRows[index];
           const gloList = placement.at.gloIds.map(id => `GLO${id + 1}`).join(', ') || 'None recorded';
-          const values = { ...row, GLOs: gloList };
-          const searchText = Object.values(row).concat(gloList).join(' ').toLocaleLowerCase();
+          const guideWeeks = unitGuideData.size ? guideWeeksForTask(placement.unit, placement.at) : null;
+          const values = { ...row, GLOs: gloList, 'Guide Week': guideWeeks ? guideWeeks.label : '' };
+          const searchText = Object.values(row).concat(gloList, values['Guide Week']).join(' ').toLocaleLowerCase();
+          const cellTitle = column => column.key === 'Assessment Title (general task type)'
+            ? ` title="${escapeAttr([placement.at.title, placement.at.studentOutput].filter(Boolean).join(' · '))}"`
+            : column.key === 'Guide Week' && guideWeeks
+              ? ` title="${escapeAttr(`From ${guideWeeks.guide.fileName}, “When and how to submit your work”: ${guideWeeks.evidence || 'submission section'}. Verify against the guide.`)}"`
+              : '';
           return `<tr data-year="${placement.unit.year}" data-trimester="${placement.trimester ?? ''}" data-search="${escapeAttr(searchText)}">
-            ${listColumns.map(column => `<td class="${column.className}"${column.key === 'Assessment Title (general task type)' ? ` title="${escapeAttr([placement.at.title, placement.at.studentOutput].filter(Boolean).join(' · '))}"` : ''}>${escapeHtml(values[column.key] || '—')}</td>`).join('')}
+            ${listColumns.map(column => `<td class="${column.className}"${cellTitle(column)}>${escapeHtml(values[column.key] || '—')}</td>`).join('')}
           </tr>`;
         }).join('')}</tbody>
       </table>
