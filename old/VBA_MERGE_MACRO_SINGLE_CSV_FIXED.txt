@@ -1,0 +1,227 @@
+========================================
+VBA MACRO: Curriculum Data Merge Tool
+(Single Combined CSV Output - FIXED)
+========================================
+
+INSTRUCTIONS:
+1. Open your Excel file with both sheets: "Courses by Units" and "Units by Assessment Tasks"
+2. Press Alt+F11 to open Visual Basic Editor
+3. Insert a new Module (Insert > Module)
+4. Copy the ENTIRE code below into the module
+5. Close the editor and save as .xlsm (Excel Macro-Enabled Workbook)
+6. Run: Tools > Macros > Run Macro > MergeCurriculumDataSingleCSV
+7. Check your Documents folder for: curriculum-merged-v1.csv
+
+========================================
+COPY THIS CODE INTO VBA MODULE:
+========================================
+
+Sub MergeCurriculumDataSingleCSV()
+    Dim wsUnits As Worksheet, wsAssessment As Worksheet
+    Dim unitDict As Object, outputRows As Object
+    Dim fso As Object, fileStream As Object
+    Dim docPath As String
+    Dim i As Long, j As Long, k As Long
+    Dim lastRowUnits As Long, lastRowAssessment As Long
+    Dim unitCode As String, pathwayId As String
+    Dim outputRow As String
+    Dim unitLevel As String, teachingPeriods As String
+    Dim atNumber As String, atTitle As String, studentOutput As String
+    Dim aoLType As String, mode As String, participation As String
+    Dim hurdle As String, weighting As String
+    Dim unitGLOString As String, taskGLOString As String
+    Dim unitDataKey As String, unitDataValue As String
+    Dim extractedPathway As String, rowKey As String
+    Dim dictKeys() As Variant
+    Dim parts() As String
+
+    ' Create dictionary to store unit coverage data
+    Set unitDict = CreateObject("Scripting.Dictionary")
+    Set outputRows = CreateObject("Scripting.Dictionary")
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    docPath = fso.GetSpecialFolder(4) ' 4 = Documents folder
+
+    On Error GoTo ErrorHandler
+
+    ' ===== SHEET 1: COURSES BY UNITS (UNIT COVERAGE DATA) =====
+    ' Build lookup dictionary: Key = "pathway_id|unit_code", Value = all unit data
+    ' Columns: A=Pathway, B=Level, C=Unit Code, D=Teaching Periods, E-L=GLO1-8
+
+    Set wsUnits = ThisWorkbook.Sheets("Courses by Units")
+    lastRowUnits = wsUnits.Cells(wsUnits.Rows.Count, 1).End(xlUp).Row
+
+    For i = 2 To lastRowUnits
+        pathwayId = CStr(wsUnits.Cells(i, 1).Value)
+        If pathwayId <> "" Then
+            unitCode = CStr(wsUnits.Cells(i, 3).Value)
+            If unitCode <> "" Then
+
+                ' Store unit data with key: "pathway|unit"
+                Dim unitDataKey2 As String
+                unitDataKey2 = pathwayId & "|" & unitCode
+
+                ' Get unit level and teaching periods
+                unitLevel = CStr(wsUnits.Cells(i, 2).Value)
+                teachingPeriods = CStr(wsUnits.Cells(i, 4).Value)
+
+                ' Get GLO values (E-L = columns 5-12)
+                unitGLOString = ""
+                For j = 5 To 12
+                    unitGLOString = unitGLOString & CStr(wsUnits.Cells(i, j).Value)
+                    If j < 12 Then unitGLOString = unitGLOString & ","
+                Next j
+
+                ' Store in dictionary: pathwayId|unitCode = "level|teaching_periods|glo_data"
+                unitDict.Add unitDataKey2, unitLevel & "|" & QuoteCSV(teachingPeriods) & "|" & unitGLOString
+            End If
+        End If
+    Next i
+
+    ' ===== SHEET 2: UNITS BY ASSESSMENT TASKS =====
+    ' For each task, find matching unit coverage and combine into one output row
+    ' Columns: A=Unit Code, B=AT Number, C=AT Title, D=Student Output, E=AoL Type, F=Mode, G=Participation, H=Hurdle, I=Weighting, J-Q=GLO1-8
+
+    Set wsAssessment = ThisWorkbook.Sheets("Units by Assessment Tasks")
+    lastRowAssessment = wsAssessment.Cells(wsAssessment.Rows.Count, 1).End(xlUp).Row
+
+    For i = 2 To lastRowAssessment
+        unitCode = CStr(wsAssessment.Cells(i, 1).Value)
+        If unitCode <> "" Then
+
+            ' Get assessment task data
+            atNumber = CStr(wsAssessment.Cells(i, 2).Value)
+            atTitle = QuoteCSV(CStr(wsAssessment.Cells(i, 3).Value))
+            studentOutput = QuoteCSV(CStr(wsAssessment.Cells(i, 4).Value))
+            aoLType = QuoteCSV(CStr(wsAssessment.Cells(i, 5).Value))
+            mode = QuoteCSV(CStr(wsAssessment.Cells(i, 6).Value))
+            participation = QuoteCSV(CStr(wsAssessment.Cells(i, 7).Value))
+            hurdle = CStr(wsAssessment.Cells(i, 8).Value)
+            weighting = QuoteCSV(CStr(wsAssessment.Cells(i, 9).Value))
+
+            ' Get task GLO values (J-Q = columns 10-17)
+            taskGLOString = ""
+            For j = 10 To 17
+                taskGLOString = taskGLOString & CStr(wsAssessment.Cells(i, j).Value)
+                If j < 17 Then taskGLOString = taskGLOString & ","
+            Next j
+
+            ' ===== MERGE: Find all pathways that include this unit =====
+            ' Loop through unitDict and match by unit_code
+            dictKeys = unitDict.Keys()
+
+            For k = LBound(dictKeys) To UBound(dictKeys)
+                unitDataKey = CStr(dictKeys(k))
+
+                ' Check if this key ends with the unit code (format: "pathway|unit_code")
+                If Right(unitDataKey, Len(unitCode)) = unitCode And _
+                   InStr(unitDataKey, "|" & unitCode) > 0 Then
+
+                    unitDataValue = unitDict(unitDataKey)
+
+                    ' Parse the stored data: "level|teaching_periods|glo_data"
+                    parts = Split(unitDataValue, "|", 3)
+
+                    If UBound(parts) >= 2 Then
+                        extractedPathway = Left(unitDataKey, InStr(unitDataKey, "|") - 1)
+
+                        ' Build combined output row
+                        outputRow = extractedPathway & "," & _
+                                   parts(0) & "," & _
+                                   unitCode & "," & _
+                                   parts(1) & "," & _
+                                   atNumber & "," & _
+                                   atTitle & "," & _
+                                   studentOutput & "," & _
+                                   aoLType & "," & _
+                                   mode & "," & _
+                                   participation & "," & _
+                                   hurdle & "," & _
+                                   weighting & "," & _
+                                   parts(2) & "," & _
+                                   taskGLOString
+
+                        ' Store with unique key to avoid duplicates
+                        rowKey = extractedPathway & "|" & unitCode & "|" & atNumber
+                        If Not outputRows.Exists(rowKey) Then
+                            outputRows.Add rowKey, outputRow
+                        End If
+                    End If
+                End If
+            Next k
+        End If
+    Next i
+
+    ' ===== WRITE SINGLE CSV FILE =====
+
+    Dim csvFile As String
+    csvFile = docPath & "\curriculum-merged-v1.csv"
+    Set fileStream = fso.CreateTextFile(csvFile, True)
+
+    ' Write header row
+    fileStream.WriteLine "pathway_id,unit_level,unit_code,teaching_periods,at_number,at_title,student_output,aol_task_type,mode,participation,hurdle,weighting,unit_glo1,unit_glo2,unit_glo3,unit_glo4,unit_glo5,unit_glo6,unit_glo7,unit_glo8,task_glo1,task_glo2,task_glo3,task_glo4,task_glo5,task_glo6,task_glo7,task_glo8"
+
+    ' Write all rows
+    Dim rowKeyItem As String
+    For Each rowKeyItem In outputRows.Keys
+        fileStream.WriteLine outputRows(rowKeyItem)
+    Next rowKeyItem
+
+    fileStream.Close
+
+    MsgBox "✓ Done! Single CSV file created:" & vbCrLf & csvFile & vbCrLf & vbCrLf & _
+           "Contains: " & outputRows.Count & " rows (pathway + unit + task combinations)", _
+           vbInformation, "Success"
+
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Error: " & Err.Description & vbCrLf & vbCrLf & _
+           "Check sheet names match exactly:" & vbCrLf & _
+           "  'Courses by Units'" & vbCrLf & _
+           "  'Units by Assessment Tasks'", vbCritical
+End Sub
+
+' Helper function to quote CSV fields with commas or quotes
+Function QuoteCSV(value As String) As String
+    ' Check if value contains comma, quote, or newline
+    If InStr(value, ",") > 0 Or InStr(value, """") > 0 Or InStr(value, vbCrLf) > 0 Then
+        ' Escape any quotes by doubling them
+        QuoteCSV = """" & Replace(value, """", """""") & """"
+    Else
+        QuoteCSV = value
+    End If
+End Function
+
+========================================
+END OF CODE
+========================================
+
+KEY FIX:
+Changed "unitDataKey2" in the first loop to avoid duplicate declaration.
+All variables are now declared once at the top.
+
+IMPORTANT NOTES:
+- Sheet names must match exactly: "Courses by Units" and "Units by Assessment Tasks"
+- Column positions must match (A, B, C, etc.)
+- If different, modify the column numbers (e.g., Cells(i, 1), Cells(i, 2), etc.)
+
+COLUMN REFERENCE:
+Courses by Units:
+  A (col 1) = Student Pathway
+  B (col 2) = Unit Level of Study
+  C (col 3) = Unit Code
+  D (col 4) = 2026 Teaching Periods
+  E-L (col 5-12) = GLO1/CLO1 through GLO8/CLO8
+
+Units by Assessment Tasks:
+  A (col 1) = Unit Code
+  B (col 2) = AT Number
+  C (col 3) = AT Title
+  D (col 4) = Student Output
+  E (col 5) = AoL Task Type
+  F (col 6) = Mode
+  G (col 7) = Participation
+  H (col 8) = Hurdle
+  I (col 9) = Weighting Information
+  J-Q (col 10-17) = GLO1/CLO1 through GLO8/CLO8

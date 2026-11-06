@@ -1,0 +1,172 @@
+========================================
+VBA MACRO: Curriculum Data Merge Tool
+(Mac Compatible - NO Scripting.Dictionary)
+========================================
+
+INSTRUCTIONS:
+1. Open your Excel file with both sheets: "Courses by Units" and "Units by Assessment Tasks"
+2. Press Alt+F11 (Mac: Cmd+F11) to open Visual Basic Editor
+3. Insert a new Module (Insert > Module)
+4. Copy the ENTIRE code below into the module
+5. Close the editor and save as .xlsm (Excel Macro-Enabled Workbook)
+6. Run: Tools > Macros > Run Macro > MergeCurriculumDataMac
+7. Check your Documents folder for: curriculum-merged-v1.csv
+
+========================================
+COPY THIS CODE INTO VBA MODULE:
+========================================
+
+Sub MergeCurriculumDataMac()
+    Dim wsUnits As Worksheet, wsAssessment As Worksheet
+    Dim fso As Object, fileStream As Object
+    Dim docPath As String
+    Dim i As Long, j As Long, k As Long
+    Dim lastRowUnits As Long, lastRowAssessment As Long
+    Dim unitCode As String, pathwayId As String
+    Dim outputRow As String
+    Dim unitLevel As String, teachingPeriods As String
+    Dim atNumber As String, atTitle As String, studentOutput As String
+    Dim aoLType As String, mode As String, participation As String
+    Dim hurdle As String, weighting As String
+    Dim unitGLOString As String, taskGLOString As String
+    Dim assessmentUnitCode As String
+    Dim csvFile As String
+    Dim rowCount As Long
+
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    ' Try to get Documents folder
+    On Error Resume Next
+    docPath = Environ("HOME") & "/Documents"
+    On Error GoTo ErrorHandler
+
+    ' Get worksheets
+    Set wsUnits = ThisWorkbook.Sheets("Courses by Units")
+    Set wsAssessment = ThisWorkbook.Sheets("Units by Assessment Tasks")
+
+    lastRowUnits = wsUnits.Cells(wsUnits.Rows.Count, 1).End(xlUp).Row
+    lastRowAssessment = wsAssessment.Cells(wsAssessment.Rows.Count, 1).End(xlUp).Row
+
+    ' Create and open CSV file
+    csvFile = docPath & "/curriculum-merged-v1.csv"
+    Set fileStream = fso.CreateTextFile(csvFile, True)
+
+    ' Write header row
+    fileStream.WriteLine "pathway_id,unit_level,unit_code,teaching_periods,at_number,at_title,student_output,aol_task_type,mode,participation,hurdle,weighting,unit_glo1,unit_glo2,unit_glo3,unit_glo4,unit_glo5,unit_glo6,unit_glo7,unit_glo8,task_glo1,task_glo2,task_glo3,task_glo4,task_glo5,task_glo6,task_glo7,task_glo8"
+
+    rowCount = 0
+
+    ' ===== MAIN MERGE LOOP =====
+    ' For each unit in Courses by Units
+    For i = 2 To lastRowUnits
+        pathwayId = CStr(wsUnits.Cells(i, 1).Value)
+        If pathwayId <> "" Then
+
+            unitCode = CStr(wsUnits.Cells(i, 3).Value)
+            If unitCode <> "" Then
+
+                ' Get unit-level data
+                unitLevel = CStr(wsUnits.Cells(i, 2).Value)
+                teachingPeriods = CStr(wsUnits.Cells(i, 4).Value)
+
+                ' Get unit GLO values (E-L = columns 5-12)
+                unitGLOString = ""
+                For j = 5 To 12
+                    unitGLOString = unitGLOString & CStr(wsUnits.Cells(i, j).Value)
+                    If j < 12 Then unitGLOString = unitGLOString & ","
+                Next j
+
+                ' ===== INNER LOOP: Find all assessment tasks for this unit =====
+                For k = 2 To lastRowAssessment
+                    assessmentUnitCode = CStr(wsAssessment.Cells(k, 1).Value)
+
+                    If assessmentUnitCode = unitCode Then
+                        ' Found matching assessment task - build combined row
+
+                        atNumber = CStr(wsAssessment.Cells(k, 2).Value)
+                        atTitle = QuoteCSV(CStr(wsAssessment.Cells(k, 3).Value))
+                        studentOutput = QuoteCSV(CStr(wsAssessment.Cells(k, 4).Value))
+                        aoLType = QuoteCSV(CStr(wsAssessment.Cells(k, 5).Value))
+                        mode = QuoteCSV(CStr(wsAssessment.Cells(k, 6).Value))
+                        participation = QuoteCSV(CStr(wsAssessment.Cells(k, 7).Value))
+                        hurdle = CStr(wsAssessment.Cells(k, 8).Value)
+                        weighting = QuoteCSV(CStr(wsAssessment.Cells(k, 9).Value))
+
+                        ' Get task GLO values (J-Q = columns 10-17)
+                        taskGLOString = ""
+                        For j = 10 To 17
+                            taskGLOString = taskGLOString & CStr(wsAssessment.Cells(k, j).Value)
+                            If j < 17 Then taskGLOString = taskGLOString & ","
+                        Next j
+
+                        ' Build and write combined row
+                        outputRow = pathwayId & "," & _
+                                   unitLevel & "," & _
+                                   unitCode & "," & _
+                                   QuoteCSV(teachingPeriods) & "," & _
+                                   atNumber & "," & _
+                                   atTitle & "," & _
+                                   studentOutput & "," & _
+                                   aoLType & "," & _
+                                   mode & "," & _
+                                   participation & "," & _
+                                   hurdle & "," & _
+                                   weighting & "," & _
+                                   unitGLOString & "," & _
+                                   taskGLOString
+
+                        fileStream.WriteLine outputRow
+                        rowCount = rowCount + 1
+                    End If
+                Next k
+            End If
+        End If
+    Next i
+
+    ' Close file
+    fileStream.Close
+
+    MsgBox "✓ Done! CSV file created:" & vbCrLf & csvFile & vbCrLf & vbCrLf & _
+           "Contains: " & rowCount & " rows", _
+           vbInformation, "Success"
+
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Error: " & Err.Description, vbCritical
+End Sub
+
+' Helper function to quote CSV fields with commas or quotes
+Function QuoteCSV(value As String) As String
+    ' Check if value contains comma, quote, or newline
+    If InStr(value, ",") > 0 Or InStr(value, """") > 0 Then
+        ' Escape any quotes by doubling them
+        QuoteCSV = """" & Replace(value, """", """""") & """"
+    Else
+        QuoteCSV = value
+    End If
+End Function
+
+========================================
+END OF CODE
+========================================
+
+MAC COMPATIBILITY NOTES:
+- No Scripting.Dictionary (Mac doesn't support it)
+- Uses native VBA loops instead
+- Simpler, more direct approach
+- Documents folder path uses Environ("HOME")
+
+HOW IT WORKS:
+1. Loop through "Courses by Units" sheet (unit coverage)
+2. For each unit, find ALL matching assessment tasks
+3. Combine into one row and write directly to CSV
+4. No intermediate storage needed
+
+IMPORTANT:
+- Sheet names must match exactly:
+  * "Courses by Units"
+  * "Units by Assessment Tasks"
+- Column positions must match:
+  * Courses by Units: A=Pathway, B=Level, C=Unit Code, D=Teaching Periods, E-L=GLO1-8
+  * Assessment Tasks: A=Unit Code, B=AT Number, C=AT Title, D=Student Output, E=AoL, F=Mode, G=Participation, H=Hurdle, I=Weighting, J-Q=GLO1-8

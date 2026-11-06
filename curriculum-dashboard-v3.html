@@ -1,0 +1,2146 @@
+<!DOCTYPE html>
+<!--
+  ════════════════════════════════════════════════════════════════════════
+  Curriculum Framework Dashboard
+  Version: 3.0
+  Last updated: 2026-05-15
+  Schema:  see SCHEMA-v2.md (CALM-native)
+  ════════════════════════════════════════════════════════════════════════
+  CHANGELOG
+  v3.0 (2026-05-15) — CALM-native input (schema v2). The dashboard now
+                      reads two CALM exports directly:
+                      • `pathways by units.xlsx` (sheet `export`) — pathway
+                        × unit × outcome
+                      • `units by assessment tasks.xlsx` (sheet `export`)
+                        — unit × assessment task × outcome
+                      Drop both files (or .csv equivalents) into the upload
+                      modal at once; header-sniffing routes each to the
+                      right importer and merges by Unit Code. Legacy v2.x
+                      merged-CSV input still works via the same sniff.
+                      Native `.xlsx` support added (SheetJS CDN).
+                      Two new cell states from CALM:
+                        • `Data Error` — red chip
+                        • `TBC`        — grey-blue chip
+                      Both are per-cell, not row-level. Existing amber
+                      "Form not received" unit-level overlay preserved.
+                      Trimester sub-rings (TRI-1/2/3) removed — CALM does
+                      not export teaching-period data. Year is now derived
+                      from the unit-code numeric prefix:
+                        0xx → Non-major (mandatory but outside major)
+                        1xx → Year 1   2xx → Year 2   3xx → Year 3
+                        7xx → Postgraduate
+                      Five year rings (Non-major / Y1 / Y2 / Y3 / PG);
+                      empty rings hidden.
+                      Optional `course-titles.csv` (hand-maintained) maps
+                      pathway prefixes → friendly course titles + enrolment
+                      info (replaces the v2.1 Course Data integration).
+                      File-pickup robust to either drop order; the modal
+                      shows the status of each role independently.
+  v2.7 (2026-05-01) — Camera lifted on initial load (lookAt y: 5 → 7) so
+                      the GLO ring at the top of the model is visible
+                      without dragging. Connector lines upgraded from
+                      LineBasicMaterial (capped at 1px in WebGL) to
+                      TubeGeometry meshes for proper variable thickness
+                      on Mac. Display panel gains: Width slider (1–10),
+                      Shape selector (Curved/Straight), and a new
+                      "By year" colour mode using a 5-stop palette.
+                      Default opacity bumped 0.20 → 0.25, default width 2.
+  v2.6 (2026-05-01) — Course Title friendly labels in pathway picker
+                      (grouped by course title, with course code badge,
+                      sortable + searchable). Picker also has a search
+                      box. Detail-panel pathway chips now show the
+                      friendly title with raw code as a tooltip.
+                      ⭐ GLO assurance celebration: clicking a GLO that's
+                      assured (full hurdle) at every year level animates
+                      the connector lines bottom-up, then fires a silver
+                      starburst at the GLO node. If ≥ 50% of visible
+                      units are AOL-tier, the burst is gold and emits
+                      sparkle particles.
+  v2.5 (2026-05-01) — Display-controls panel (⚙ Display button). First
+                      controls: connecting-line colour mode (By GLO colour
+                      / Single colour with picker) and baseline opacity
+                      slider. Live recolour without rebuilding the scene.
+                      Framework ready for additional controls.
+  v2.4 (2026-05-01) — Multi-select pathway picker (replaces single dropdown).
+                      Pathway button shows N selected; "Core Only" / "All" /
+                      "Clear" presets. Allows e.g. B.Sci. + Human Biology
+                      together so unit counts add up correctly.
+  v2.3 (2026-05-01) — Hurdle ⚑ flag icon and ⚠ Form-not-received icon
+                      floating above unit nodes (always visible, survive
+                      GLO-filter recolouring). Left panel rewritten as a
+                      compact GLO Coverage table: Assessed (any Yes) vs
+                      Assured (full Yes / hurdle).
+  v2.2 (2026-05-01) — Three-state GLO chips: Yes (filled) / Non-hurdle Yes
+                      (outlined) / No or Not Assessed (faded). Form-not-
+                      received as a fourth amber state. New "⚠ Form Issues"
+                      toggle button + banner + per-AT badge.
+  v2.1 (2026-05-01) — Course Data integration: course titles + enrolments
+                      surface in the detail panel and pathway dropdown,
+                      tooltip mentions the course.
+  v2.0 (2026-05-01) — Rewritten for the long-format merged CSV (one row per
+                      pathway × unit × AT, group-by-unit). Pathway filter,
+                      Core Only quick-toggle, hurdle highlight, trimester
+                      sub-positioning (TRI-1 left arc / TRI-2 right arc),
+                      AT detail panel with hurdle badge.
+  ════════════════════════════════════════════════════════════════════════
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Curriculum Framework Dashboard v3.0 — CALM</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;700&family=Instrument+Serif&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0a0b0f;
+    --panel: rgba(16, 18, 27, 0.92);
+    --border: rgba(255,255,255,0.06);
+    --text: #e8e6e1;
+    --text-dim: #8a8780;
+    --accent: #f4a261;
+    --success: #2a9d8f;
+    --hurdle: #e63946;
+    --glo1: #e76f51; --glo2: #f4a261; --glo3: #e9c46a; --glo4: #2a9d8f;
+    --glo5: #607d8b; --glo6: #a06cd5; --glo7: #6d9dc5; --glo8: #c77dba;
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; overflow: hidden; height: 100vh; }
+  #canvas-container { position: fixed; inset: 0; z-index: 1; }
+  .ui-layer { position: fixed; z-index: 10; pointer-events: none; }
+  .ui-layer > * { pointer-events: auto; }
+
+  .header { top: 0; left: 0; right: 0; padding: 20px 24px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+  .header h1 { font-family: 'Instrument Serif', serif; font-size: 26px; font-weight: 400; letter-spacing: -0.5px; }
+  .header .subtitle { font-size: 12px; color: var(--text-dim); margin-top: 3px; font-weight: 300; }
+  .controls-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  .nav-group { display: flex; gap: 3px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 3px; backdrop-filter: blur(20px); }
+  .nav-btn { background: none; border: none; color: var(--text-dim); font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500; padding: 6px 12px; border-radius: 6px; cursor: pointer; transition: all 0.3s; }
+  .nav-btn:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+  .nav-btn.active { color: var(--bg); background: var(--accent); }
+
+  /* Display-controls dropdown (shares styling with pathway multi-select) */
+  .display-panel {
+    position: absolute; top: calc(100% + 4px); left: 0; z-index: 60;
+    background: #14151f; border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; min-width: 280px;
+    backdrop-filter: blur(20px); display: none;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+  }
+  .display-panel.show { display: block; }
+  .display-section { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  .display-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .display-section h4 { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 8px; font-weight: 500; }
+  .display-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; font-size: 11px; }
+  .display-row label { color: var(--text-dim); }
+  .display-row input[type="color"] { width: 32px; height: 24px; border: 1px solid var(--border); border-radius: 4px; background: transparent; cursor: pointer; padding: 0; }
+  .display-row input[type="range"] { flex: 1; max-width: 140px; accent-color: var(--accent); }
+  .display-row select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; font-size: 11px; font-family: 'DM Sans', sans-serif; }
+  .display-wrap { position: relative; }
+
+  .pathway-multi { position: relative; }
+  .pathway-multi-btn {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 28px 6px 12px; backdrop-filter: blur(20px);
+    color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500;
+    cursor: pointer; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%238a8780' d='M5 6L0 0h10z'/></svg>");
+    background-repeat: no-repeat; background-position: right 10px center; text-align: left;
+  }
+  .pathway-multi-btn:hover { border-color: var(--accent); }
+  .pathway-multi-btn.has-selection { border-color: var(--accent); color: var(--accent); }
+  .pathway-multi-panel {
+    position: absolute; top: calc(100% + 4px); left: 0; z-index: 60;
+    background: #14151f; border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px; min-width: 320px; max-height: 70vh; overflow-y: auto;
+    backdrop-filter: blur(20px); display: none;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+  }
+  .pathway-multi-panel.show { display: block; }
+  .pathway-multi-actions { display: flex; gap: 4px; padding: 4px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+  .pathway-multi-actions button {
+    flex: 1; background: none; border: 1px solid var(--border); color: var(--text-dim);
+    padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .pathway-multi-actions button:hover { background: rgba(255,255,255,0.05); color: var(--text); border-color: var(--accent); }
+  .pathway-option {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: 4px; cursor: pointer;
+    font-size: 12px; user-select: none;
+  }
+  .pathway-option:hover { background: rgba(255,255,255,0.05); }
+  .pathway-option input { cursor: pointer; accent-color: var(--accent); }
+  .pathway-option.checked { color: var(--accent); }
+  .pathway-multi-count { font-size: 10px; color: var(--text-dim); padding: 2px 8px 6px; }
+  .pathway-group-header { font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text); font-weight: 600; padding: 8px 8px 4px; margin-top: 4px; border-top: 1px solid var(--border); }
+  .pathway-group-header:first-child { border-top: none; margin-top: 0; }
+  .pathway-search { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 6px 8px; border-radius: 4px; font-size: 11px; font-family: 'DM Sans', sans-serif; margin-bottom: 6px; }
+  .pathway-search:focus { outline: none; border-color: var(--accent); }
+
+  .toggle-btn {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 14px; backdrop-filter: blur(20px);
+    color: var(--text-dim); font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all 0.3s;
+  }
+  .toggle-btn:hover { border-color: var(--accent); color: var(--text); }
+  .toggle-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .toggle-btn.hurdle.active { background: var(--hurdle); color: white; border-color: var(--hurdle); }
+  .toggle-btn.form.active { background: #ffb703; color: #14151f; border-color: #ffb703; }
+
+  .upload-btn { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 14px; backdrop-filter: blur(20px); color: var(--accent); font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.3s; display: flex; align-items: center; gap: 6px; }
+  .upload-btn:hover { background: rgba(244, 162, 97, 0.1); border-color: var(--accent); }
+
+  .side-panel { top: 80px; left: 16px; bottom: 16px; width: 240px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; backdrop-filter: blur(20px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent; }
+  .side-panel h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-dim); margin-bottom: 12px; font-weight: 500; }
+  .glo-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); cursor: pointer; transition: opacity 0.3s; }
+  .glo-item:last-child { border-bottom: none; }
+  .glo-item:hover { opacity: 0.8; }
+  .glo-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; vertical-align: middle; margin-right: 6px; }
+  .glo-label { font-size: 12px; font-weight: 500; line-height: 1.4; }
+  .glo-sub { font-size: 10px; color: var(--text-dim); margin-top: 2px; font-weight: 300; }
+
+  /* GLO summary table */
+  .glo-summary { font-size: 11px; color: var(--text-dim); margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  .glo-summary strong { color: var(--text); font-size: 14px; font-weight: 600; }
+  .glo-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .glo-table th { text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-dim); font-weight: 500; padding: 4px 4px 6px; border-bottom: 1px solid var(--border); }
+  .glo-table th.num { text-align: right; }
+  .glo-table td { padding: 6px 4px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.2s; }
+  .glo-table td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+  .glo-table tr:hover td { background: rgba(255,255,255,0.04); }
+  .glo-table tr.active td { background: rgba(244,162,97,0.1); }
+  .glo-table tr:last-child td { border-bottom: none; }
+  .glo-table .assured { color: var(--accent); }
+  .glo-table .zero { color: var(--text-dim); opacity: 0.5; }
+
+  .detail-panel { top: 80px; right: 16px; bottom: 16px; width: 320px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; backdrop-filter: blur(20px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent; transform: translateX(350px); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+  .detail-panel.visible { transform: translateX(0); }
+  .detail-panel .close-btn { position: absolute; top: 12px; right: 12px; background: none; border: none; color: var(--text-dim); font-size: 16px; cursor: pointer; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 5px; transition: all 0.2s; }
+  .detail-panel .close-btn:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+  .detail-title { font-family: 'Instrument Serif', serif; font-size: 20px; margin-bottom: 2px; }
+  .detail-year { font-size: 11px; color: var(--accent); font-weight: 500; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+  .detail-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .detail-section h4 { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-dim); margin-bottom: 8px; font-weight: 500; }
+
+  .at-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .at-card.hurdle { border-color: rgba(230,57,70,0.5); background: rgba(230,57,70,0.06); }
+  .at-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .at-num { font-family: 'Instrument Serif', serif; font-size: 14px; color: var(--accent); }
+  .at-title { font-weight: 500; flex: 1; }
+  .at-meta { font-size: 10px; color: var(--text-dim); margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .at-glo-row { margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+  .at-glo-chip { font-size: 9px; padding: 2px 6px; border-radius: 3px; font-weight: 600; line-height: 1.4; }
+  .at-glo-chip.hurdle { color: white; }                                /* Yes / Hurdle Yes — solid fill */
+  .at-glo-chip.nonhurdle { background: transparent; border: 1px solid currentColor; }   /* Non-hurdle Yes — outlined */
+  .at-glo-chip.no, .at-glo-chip.notassessed { opacity: 0.35; background: rgba(255,255,255,0.04); color: var(--text-dim); border: 1px solid transparent; }
+  .at-glo-chip.missing { background: rgba(255,183,3,0.15); color: #ffb703; border: 1px solid rgba(255,183,3,0.5); }
+  /* CALM row-level data quality states (per-cell — can occur individually or fill a whole row) */
+  .at-glo-chip.dataerror { background: rgba(230,57,70,0.18); color: #ff6b78; border: 1px solid rgba(230,57,70,0.6); }
+  .at-glo-chip.tbc { background: rgba(109,157,197,0.18); color: #9ec5e3; border: 1px solid rgba(109,157,197,0.55); font-style: italic; }
+  .at-glo-chip.inconsistent { outline: 1px solid var(--hurdle); outline-offset: 1px; }
+  .form-banner { background: rgba(255,183,3,0.12); border: 1px solid rgba(255,183,3,0.5); color: #ffb703; padding: 6px 10px; border-radius: 6px; font-size: 11px; margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+  .hurdle-badge { background: var(--hurdle); color: white; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+
+  .info-bar { bottom: 16px; left: 270px; right: 350px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+  .info-chip { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font-size: 11px; color: var(--text-dim); backdrop-filter: blur(20px); display: flex; align-items: center; gap: 5px; }
+  .info-chip strong { color: var(--text); font-weight: 500; }
+  .legend-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+  .modal-overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: #14151f; border: 1px solid var(--border); border-radius: 16px; padding: 32px; max-width: 640px; width: 90%; }
+  .modal h2 { font-family: 'Instrument Serif', serif; font-size: 24px; margin-bottom: 8px; }
+  .modal p { font-size: 13px; color: var(--text-dim); line-height: 1.6; margin-bottom: 16px; }
+  .drop-zone { border: 2px dashed rgba(244, 162, 97, 0.3); border-radius: 12px; padding: 40px 24px; text-align: center; cursor: pointer; transition: all 0.3s; margin-bottom: 16px; }
+  .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: rgba(244, 162, 97, 0.05); }
+  .drop-zone .icon { font-size: 32px; margin-bottom: 8px; }
+  .drop-zone .label { font-size: 13px; color: var(--text-dim); }
+  .drop-zone .label strong { color: var(--accent); }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .btn-secondary { background: none; border: 1px solid var(--border); color: var(--text-dim); padding: 8px 16px; border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 13px; cursor: pointer; transition: all 0.3s; }
+  .btn-secondary:hover { border-color: var(--text-dim); color: var(--text); }
+  .btn-primary { background: var(--accent); border: none; color: var(--bg); padding: 8px 20px; border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.3s; }
+  .btn-primary:hover { filter: brightness(1.1); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .file-info { font-size: 12px; color: var(--success); margin-top: 8px; display: none; }
+  .csv-schema { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 16px; font-size: 11px; color: var(--text-dim); line-height: 1.6; font-family: 'DM Mono', monospace; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
+  .role-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; }
+  .role-row + .role-row { margin-top: 2px; }
+  .role-row .role-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.15); flex-shrink: 0; }
+  .role-row.loaded .role-dot { background: var(--success); box-shadow: 0 0 0 3px rgba(42,157,143,0.18); }
+  .role-row .role-name { color: var(--text); font-weight: 500; min-width: 200px; }
+  .role-row.loaded .role-file { color: var(--success) !important; }
+
+  .status-bar { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 50; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 16px; font-size: 12px; backdrop-filter: blur(20px); display: none; align-items: center; gap: 8px; }
+  .status-bar.show { display: flex; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  #tooltip { position: fixed; z-index: 100; background: rgba(16, 18, 27, 0.95); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 11px; color: var(--text); pointer-events: none; opacity: 0; transition: opacity 0.2s; backdrop-filter: blur(10px); max-width: 320px; }
+  #tooltip.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div class="ui-layer header">
+  <div>
+    <h1 id="dashboard-title">Curriculum Framework Dashboard <span style="font-size:14px;color:var(--text-dim);" title="See &lt;!-- CHANGELOG --&gt; in the HTML source for version history">v3.0</span></h1>
+    <div class="subtitle" id="dashboard-subtitle">Drop both CALM exports (pathways by units &amp; units by assessment tasks) to populate the model.</div>
+  </div>
+  <div class="controls-row">
+    <div class="pathway-multi" id="pathway-multi">
+      <button class="pathway-multi-btn" id="pathway-btn" title="Filter by pathway (multi-select)" onclick="togglePathwayPanel(event)">All pathways</button>
+      <div class="pathway-multi-panel" id="pathway-panel" onclick="event.stopPropagation()">
+        <input class="pathway-search" id="pathway-search" type="search" placeholder="Search course or pathway…" oninput="filterPathwayOptions(this.value)">
+        <div class="pathway-multi-actions">
+          <button onclick="clearPathways()">Clear</button>
+          <button onclick="selectCorePathways()">Core Only</button>
+          <button onclick="selectAllPathways()">All</button>
+        </div>
+        <div id="pathway-options"></div>
+        <div class="pathway-multi-count" id="pathway-count"></div>
+      </div>
+    </div>
+    <button class="toggle-btn" id="core-only-btn" title="Show Core Only pathway">Core Only</button>
+    <button class="toggle-btn hurdle" id="hurdle-btn" title="Highlight hurdle units">⚑ Hurdles</button>
+    <button class="toggle-btn form" id="form-btn" title="Highlight units with 'Form not received'">⚠ Form Issues</button>
+    <div class="display-wrap">
+      <button class="toggle-btn" id="display-btn" title="Display options" onclick="toggleDisplayPanel(event)">⚙ Display</button>
+      <div class="display-panel" id="display-panel" onclick="event.stopPropagation()">
+        <div class="display-section">
+          <h4>Connecting Lines</h4>
+          <div class="display-row">
+            <label for="line-color-mode">Colour mode</label>
+            <select id="line-color-mode" onchange="onLineColorModeChange(this.value)">
+              <option value="glo">By GLO colour</option>
+              <option value="year">By year</option>
+              <option value="mono">Single colour</option>
+            </select>
+          </div>
+          <div class="display-row" id="line-color-pick-row" style="display:none;">
+            <label for="line-color-pick">Custom colour</label>
+            <input type="color" id="line-color-pick" value="#8a8780" oninput="onLineColorPickChange(this.value)">
+          </div>
+          <div class="display-row">
+            <label for="line-width">Width</label>
+            <input type="range" id="line-width" min="1" max="10" value="2" oninput="onLineWidthChange(this.value)">
+            <span id="line-width-val" style="font-variant-numeric:tabular-nums; min-width:32px; text-align:right;">2</span>
+          </div>
+          <div class="display-row">
+            <label for="line-opacity">Opacity</label>
+            <input type="range" id="line-opacity" min="0" max="100" value="25" oninput="onLineOpacityChange(this.value)">
+            <span id="line-opacity-val" style="font-variant-numeric:tabular-nums; min-width:32px; text-align:right;">0.25</span>
+          </div>
+          <div class="display-row">
+            <label for="line-curve">Shape</label>
+            <select id="line-curve" onchange="onLineCurveChange(this.value)">
+              <option value="curved">Curved</option>
+              <option value="straight">Straight</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    <button class="upload-btn" onclick="showModal()">⬆ Upload CSV</button>
+    <div class="nav-group" id="view-nav">
+      <button class="nav-btn active" data-view="rings">Rings</button>
+      <button class="nav-btn" data-view="matrix">Matrix</button>
+    </div>
+    <div class="nav-group" id="year-nav">
+      <button class="nav-btn active" data-year="0">All</button>
+    </div>
+  </div>
+</div>
+
+<div class="ui-layer side-panel" id="glo-panel">
+  <h3>GLO Coverage</h3>
+  <div id="glo-list"></div>
+</div>
+
+<div class="ui-layer detail-panel" id="detail-panel">
+  <button class="close-btn" onclick="closeDetail()">✕</button>
+  <div id="detail-content"></div>
+</div>
+
+<div class="ui-layer info-bar">
+  <div class="info-chip"><span class="legend-dot" style="background:var(--accent)"></span> <strong>◆</strong> AOL</div>
+  <div class="info-chip"><span class="legend-dot" style="background:var(--success)"></span> <strong>▣</strong> CLO</div>
+  <div class="info-chip"><span class="legend-dot" style="background:var(--text-dim)"></span> <strong>○</strong> Developing</div>
+  <div class="info-chip"><span style="color:var(--hurdle);font-size:13px;line-height:1;">⚑</span> Hurdle</div>
+  <div class="info-chip"><span style="color:#ffb703;font-size:13px;line-height:1;">⚠</span> Form not received</div>
+  <div class="info-chip"><span style="color:#ff6b78;font-size:13px;line-height:1;">■</span> Data Error</div>
+  <div class="info-chip"><span style="color:#9ec5e3;font-size:13px;line-height:1;">■</span> TBC</div>
+  <div class="info-chip">Drag · Scroll · Click</div>
+</div>
+
+<div class="status-bar" id="status-bar">
+  <span class="status-dot" id="status-dot"></span>
+  <span id="status-text"></span>
+</div>
+
+<div id="tooltip"></div>
+
+<!-- Upload Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2>Upload CALM Exports</h2>
+    <p>Drop both CALM exports below (in any order). The dashboard sniffs headers to identify each file. Legacy v2.x merged CSVs and an optional <code>course-titles.csv</code> are also accepted.</p>
+    <div class="csv-schema">Expected files (auto-detected by header):
+  • pathways by units.xlsx / .csv      — sheet `export`
+       Student Pathway, Unit Level of Study, Unit Code, GLO1 / CLO1 … GLO8 / CLO8
+  • units by assessment tasks.xlsx / .csv  — sheet `export`
+       Unit Code, Task Number, Assessment Title, AoL Task Type, Student Output,
+       Mode, Participation, Hurdle, Weighting Information, GLO1 / CLO1 … GLO8 / CLO8
+  • course-titles.csv (optional)
+       pathway_prefix, course_title, enrolment
+  • Legacy v2.x merged CSV (single file) — fallback path
+
+Cell values: Yes · Hurdle Yes · Non-hurdle Yes · No · Not Assessed · Data Error · TBC
+See SCHEMA-v2.md for full vocabulary.</div>
+    <div class="drop-zone" id="drop-zone">
+      <div class="icon">📄</div>
+      <div class="label">Drag &amp; drop CALM files here, or <strong>click to browse</strong> (multi-select OK)</div>
+    </div>
+    <div id="file-roles" style="display:none; margin-top:12px; font-size:11px;">
+      <div class="role-row" data-role="calm_pathways">
+        <span class="role-dot"></span>
+        <span class="role-name">pathways by units</span>
+        <span class="role-file" style="color:var(--text-dim);">— not loaded</span>
+      </div>
+      <div class="role-row" data-role="calm_tasks">
+        <span class="role-dot"></span>
+        <span class="role-name">units by assessment tasks</span>
+        <span class="role-file" style="color:var(--text-dim);">— not loaded</span>
+      </div>
+      <div class="role-row" data-role="course_titles">
+        <span class="role-dot"></span>
+        <span class="role-name">course-titles (optional)</span>
+        <span class="role-file" style="color:var(--text-dim);">— not loaded</span>
+      </div>
+      <div class="role-row" data-role="legacy_merged" style="display:none;">
+        <span class="role-dot"></span>
+        <span class="role-name">legacy merged CSV</span>
+        <span class="role-file" style="color:var(--text-dim);">— not loaded</span>
+      </div>
+    </div>
+    <input type="file" id="file-input" accept=".csv,.xlsx,.xls" multiple style="display:none">
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="hideModal()">Cancel</button>
+      <button class="btn-primary" id="apply-btn" onclick="applyFiles()" disabled>Apply to Model</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════════════
+const GLO_COLORS = ['#e76f51','#f4a261','#e9c46a','#2a9d8f','#607d8b','#a06cd5','#6d9dc5','#c77dba'];
+const GLO_NAMES = [
+  'Discipline-specific knowledge','Communication','Digital literacy','Critical thinking',
+  'Problem solving','Self-management','Teamwork','Global citizenship'
+];
+// 1:1 GLO↔CLO mapping in the new framework: each "GLOn / CLOn" column is one pair.
+const CLO_DATA = GLO_NAMES.map((n, i) => ({ id: i, gloId: i, short: 'CLO' + (i+1), text: n }));
+
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+// (legacy parsedCSV state removed in v3.0 — see loadedSources below)
+let curriculum = { units: [], years: [], pathways: [], pathwayMeta: new Map() };
+let activeYear = 999;   // 999 = show all years (0 is now a valid year ring = Non-major)
+let activeGLO = -1;
+let activePathways = new Set();   // empty = show ALL pathways
+let coreOnly = false;
+let hurdleHighlight = false;
+let formHighlight = false;
+let currentView = 'rings';
+
+// ─── Display options ────────────────────────────────────────────
+let lineColorMode = 'glo';        // 'glo' | 'year' | 'mono'
+let lineMonoColor = '#8a8780';    // used when mode === 'mono'
+let lineBaseOpacity = 0.25;       // baseline opacity when no GLO is highlighted
+let lineWidth = 2;                // 1–10 → tube radius scaling
+let lineCurve = 'curved';         // 'curved' | 'straight'
+
+// Per-year palette used when lineColorMode === 'year'
+const YEAR_COLORS = ['#2a9d8f', '#e9c46a', '#e76f51', '#a06cd5', '#6d9dc5'];
+function yearColor(year) {
+  const idx = Math.max(0, Math.min(YEAR_COLORS.length - 1, (year || 1) - 1));
+  return YEAR_COLORS[idx];
+}
+
+let scene, camera, renderer, spiralGroup;
+let unitMeshes = [], gloMeshes = [], cloMeshes = [];
+let isDragging = false, previousMouse = { x: 0, y: 0 };
+let spherical = { theta: 0.8, phi: 1.0, radius: 24 };
+let targetSpherical = { ...spherical };
+let hoveredMesh = null;
+let time = 0;
+
+const baseRadius = 6;
+const heightPerYear = 3.5;
+
+// ═══════════════════════════════════════════════════════════════
+// CSV PARSING (long-format merged CSV)
+// ═══════════════════════════════════════════════════════════════
+function normHeader(s) { return String(s||'').toLowerCase().replace(/[\s_/]+/g, ''); }
+
+function findHeader(headers, candidates) {
+  // returns header name (original) that matches any candidate (normalised)
+  const norm = headers.map(normHeader);
+  for (const cand of candidates) {
+    const idx = norm.indexOf(normHeader(cand));
+    if (idx >= 0) return headers[idx];
+  }
+  return null;
+}
+
+// GLO cell can be one of:
+//   'hurdle'      — "Yes" / "Hurdle Yes" (full assessment)
+//   'nonhurdle'   — "Non-hurdle Yes"
+//   'no'          — "No"
+//   'notassessed' — "Not Assessed"
+//   'missing'     — "Form not received" (unit-level legacy state)
+//   'dataerror'   — "Data Error" (CALM data-quality flag, per-cell)
+//   'tbc'         — "TBC" (CALM outcomes-pending flag, per-cell)
+//   'blank'       — empty / unrecognised
+function classifyGLOState(v) {
+  const t = String(v||'').trim().toLowerCase();
+  if (!t) return 'blank';
+  if (t === 'tbc' || t.indexOf('to be confirmed') >= 0) return 'tbc';
+  if (t.indexOf('data error') >= 0) return 'dataerror';
+  if (t.indexOf('form not received') >= 0) return 'missing';
+  if (t.indexOf('not assessed') >= 0) return 'notassessed';
+  if (t === 'no') return 'no';
+  if (t.indexOf('non-hurdle') >= 0 || t.indexOf('non hurdle') >= 0) return 'nonhurdle';
+  if (t.indexOf('hurdle') >= 0 && t.indexOf('yes') >= 0) return 'hurdle';
+  if (t.indexOf('yes') >= 0) return 'hurdle';   // bare "Yes" treated as hurdle/full
+  return 'blank';
+}
+
+// Derive year ring from the numeric prefix of the unit code (CALM schema v2).
+//   XXX0xx → 0 (Non-major: mandatory but outside the major)
+//   XXX1xx → 1 (Year 1)
+//   XXX2xx → 2 (Year 2)
+//   XXX3xx → 3 (Year 3)
+//   XXX7xx → 7 (Postgraduate)
+//   anything else → -1 (Unclassified — gets its own ring if any units land there)
+function deriveYearFromCode(code) {
+  const m = String(code||'').match(/[A-Za-z]+\s*(\d{3,})/);
+  if (!m) return -1;
+  const firstDigit = parseInt(m[1].charAt(0), 10);
+  if (firstDigit === 0) return 0;
+  if (firstDigit === 1) return 1;
+  if (firstDigit === 2) return 2;
+  if (firstDigit === 3) return 3;
+  if (firstDigit === 7) return 7;
+  return -1;
+}
+
+function yearLabel(y) {
+  if (y === 0) return 'Non-major';
+  if (y === 7) return 'PG';
+  if (y === -1) return '?';
+  return 'Y' + y;
+}
+
+// Coverage = any flavour of yes (hurdle OR non-hurdle).
+function isCovered(v) {
+  const s = classifyGLOState(v);
+  return s === 'hurdle' || s === 'nonhurdle';
+}
+
+function isHurdleYes(v) {
+  // For the assessment Hurdle column ("Hurdle Yes" / "Non-hurdle Yes" / "No" / "Not Assessed")
+  const t = String(v||'').trim().toLowerCase();
+  return t.indexOf('hurdle') >= 0 && t.indexOf('non') < 0 && t.indexOf('yes') >= 0;
+}
+
+// Pathway labels look like "D306_Core Only", "D306-Major1", "D306 Major2".
+// Course code = the prefix before the first separator.
+function extractCourseCode(pathway) {
+  const m = String(pathway || '').match(/^([A-Za-z0-9]+)/);
+  return m ? m[1].toUpperCase() : '';
+}
+// Pathway suffix = the part AFTER the first separator.
+function extractPathwaySuffix(pathway) {
+  const s = String(pathway || '');
+  const idx = s.search(/[_\-\s\/]/);
+  return idx >= 0 ? s.slice(idx + 1).trim() : s;
+}
+// Friendly label combining course title (if known) and pathway suffix.
+function pathwayLabel(pathway) {
+  const meta = curriculum.pathwayMeta && curriculum.pathwayMeta.get(pathway);
+  if (!meta) return pathway;
+  const title = meta.courseTitle;
+  const suffix = meta.suffix || '';
+  if (title && suffix) return title + ' — ' + suffix;
+  if (title) return title;
+  return pathway;
+}
+
+function classifyTaskTier(v) {
+  const t = String(v||'').toLowerCase();
+  if (t.indexOf('aol') >= 0) return 'aol';
+  if (t.indexOf('clo') >= 0) return 'clo';
+  return 'developing';
+}
+
+// ─── Header sniffing — identify which CALM file (or legacy CSV) this is ─
+// Returns one of: 'calm_pathways' | 'calm_tasks' | 'course_titles' | 'legacy_merged' | 'unknown'
+function sniffRole(headers) {
+  const hasH = (cands) => !!findHeader(headers, cands);
+  const hasPaired = headers.some(h => /glo\s*\d\s*\/\s*clo\s*\d/i.test(h));
+  const hasUnitOrAtGLO = headers.some(h => /(unit_?|at_?)\s*glo\s*\d/i.test(h));
+
+  if (hasH(['pathway_prefix']) && hasH(['course_title'])) return 'course_titles';
+  // Legacy merged: has both AT-prefixed and Unit-prefixed GLOs in same row, OR AT Number alongside Student Pathway
+  if (hasUnitOrAtGLO && hasH(['Student Pathway']) && hasH(['AT Number'])) return 'legacy_merged';
+  // CALM File 2 — task-level (has Task Number + paired GLO/CLO + Assessment Title)
+  if (hasPaired && hasH(['Task Number']) && hasH(['Assessment Title'])) return 'calm_tasks';
+  // CALM File 1 — pathway-level (paired GLO/CLO + Student Pathway, NO Task Number)
+  if (hasPaired && hasH(['Student Pathway'])) return 'calm_pathways';
+  return 'unknown';
+}
+
+// Detect the 8 paired "GLO1 / CLO1" columns, ordered by index.
+function detectPairedGloCols(headers) {
+  const cols = new Array(8).fill(null);
+  headers.forEach(h => {
+    const m = h.match(/glo\s*(\d)\s*\/\s*clo\s*\d/i);
+    if (!m) return;
+    const idx = parseInt(m[1], 10) - 1;
+    if (idx >= 0 && idx < 8) cols[idx] = h;
+  });
+  return cols;
+}
+
+// Detect Unit_GLO* / AT_GLO* columns for legacy merged CSV.
+function detectLegacyGloCols(headers) {
+  const unitGloCols = new Array(8).fill(null);
+  const atGloCols = new Array(8).fill(null);
+  headers.forEach(h => {
+    const m = h.match(/(unit_?|at_?)?\s*glo\s*(\d+)/i);
+    if (!m) return;
+    const prefix = (m[1] || '').toLowerCase();
+    const num = parseInt(m[2], 10) - 1;
+    if (num < 0 || num > 7) return;
+    if (prefix.startsWith('at')) atGloCols[num] = h;
+    else unitGloCols[num] = h;
+  });
+  return { unitGloCols, atGloCols };
+}
+
+// ─── CALM importer state ───────────────────────────────────────────────
+// Each loaded file is stored in loadedSources by role. buildCurriculumFromSources
+// merges them on demand.
+//   loadedSources.calm_pathways  = [rows]   (pathway × unit × outcome)
+//   loadedSources.calm_tasks     = [rows]   (unit × AT × outcome)
+//   loadedSources.course_titles  = [rows]   (pathway_prefix, course_title, enrolment)
+//   loadedSources.legacy_merged  = [rows]   (one long-format CSV — bypasses CALM merge)
+let loadedSources = {};
+
+// Build the curriculum object from whichever sources are currently loaded.
+// Returns the same shape as v2's parseCSVData: { units, years, pathways, pathwayMeta }
+function buildCurriculumFromSources() {
+  if (loadedSources.legacy_merged) {
+    return parseLegacyMerged(loadedSources.legacy_merged);
+  }
+  if (loadedSources.calm_pathways || loadedSources.calm_tasks) {
+    return parseCALM(
+      loadedSources.calm_pathways || [],
+      loadedSources.calm_tasks || [],
+      loadedSources.course_titles || []
+    );
+  }
+  return { units: [], years: [], pathways: [], pathwayMeta: new Map() };
+}
+
+// ─── CALM parser (schema v2) ───────────────────────────────────────────
+function parseCALM(pathwayRows, taskRows, titleRows) {
+  // Build the course-title lookup first so we can attach metadata as pathways are discovered.
+  const titleLookup = new Map();   // prefix (upper) -> {courseTitle, enrolment}
+  titleRows.forEach(r => {
+    const prefix = String(r.pathway_prefix || r['Pathway Prefix'] || r.prefix || '').trim().toUpperCase();
+    if (!prefix) return;
+    titleLookup.set(prefix, {
+      courseTitle: String(r.course_title || r['Course Title'] || '').trim(),
+      enrolment:   String(r.enrolment || r['Enrolment'] || r.enrolments || '').trim()
+    });
+  });
+
+  // ── Pass 1: assessment tasks (unit-level: shared across pathways) ──
+  // Build a map of unit_code -> [ATs]
+  const atsByUnit = new Map();
+  const taskHeaders = taskRows.length ? Object.keys(taskRows[0]) : [];
+  const taskPairCols = detectPairedGloCols(taskHeaders);
+  const colATUnit    = findHeader(taskHeaders, ['Unit Code']);
+  const colATNum     = findHeader(taskHeaders, ['Task Number', 'AT Number']);
+  const colATTitle   = findHeader(taskHeaders, ['Assessment Title', 'AT Title']);
+  const colATType    = findHeader(taskHeaders, ['AoL Task Type', 'AT Type']);
+  const colStudentOut= findHeader(taskHeaders, ['Student Output']);
+  const colMode      = findHeader(taskHeaders, ['Mode']);
+  const colPartic    = findHeader(taskHeaders, ['Participation']);
+  const colHurdle    = findHeader(taskHeaders, ['Hurdle']);
+  const colWeight    = findHeader(taskHeaders, ['Weighting Information', 'Weighting']);
+
+  taskRows.forEach(row => {
+    if (!colATUnit) return;
+    const code = String(row[colATUnit] || '').trim();
+    if (!code) return;
+    const atNum = String(row[colATNum] || '').trim();
+    const atGloStates = taskPairCols.map(h => h ? classifyGLOState(row[h]) : 'blank');
+    const atGloIds = [];
+    atGloStates.forEach((s, i) => { if (s === 'hurdle' || s === 'nonhurdle') atGloIds.push(i); });
+    const at = {
+      number: atNum,
+      title: String(row[colATTitle] || '').trim(),
+      type:  String(row[colATType]  || '').trim(),
+      studentOutput: String(row[colStudentOut] || '').trim(),
+      mode:  String(row[colMode]    || '').trim(),
+      participation: String(row[colPartic] || '').trim(),
+      hurdle: String(row[colHurdle] || '').trim(),
+      weighting: String(row[colWeight] || '').trim(),
+      gloIds: atGloIds,
+      inconsistentGloIds: [],          // filled below after unit-level GLOs known
+      gloStates: atGloStates,
+      formMissing: atGloStates.includes('missing'),
+      tier: classifyTaskTier(row[colATType])
+    };
+    if (!atsByUnit.has(code)) atsByUnit.set(code, []);
+    atsByUnit.get(code).push(at);
+  });
+
+  // ── Pass 2: pathway × unit rows — drive unit creation and unit-level GLO state ──
+  const unitMap = new Map();      // code -> unit
+  const pathwaySet = new Set();
+  const pathwayMeta = new Map();
+  const yearSet = new Set();
+
+  const pathHeaders = pathwayRows.length ? Object.keys(pathwayRows[0]) : [];
+  const pathPairCols = detectPairedGloCols(pathHeaders);
+  const colPath  = findHeader(pathHeaders, ['Student Pathway', 'Pathway']);
+  const colCode  = findHeader(pathHeaders, ['Unit Code']);
+
+  pathwayRows.forEach(row => {
+    if (!colCode) return;
+    const code = String(row[colCode] || '').trim();
+    if (!code) return;
+    const pathway = String(row[colPath] || '').trim();
+
+    // Register pathway + metadata
+    if (pathway) {
+      pathwaySet.add(pathway);
+      if (!pathwayMeta.has(pathway)) {
+        const courseCode = extractCourseCode(pathway);
+        const titleEntry = titleLookup.get(courseCode.toUpperCase()) || {};
+        pathwayMeta.set(pathway, {
+          pathway,
+          courseCode,
+          suffix:      extractPathwaySuffix(pathway),
+          courseTitle: titleEntry.courseTitle || '',
+          enrolments:  titleEntry.enrolment   || '',
+          endorsement: '',
+          accreditation: '',
+          directorComments: ''
+        });
+      }
+    }
+
+    // Derive year from unit code (schema-v2 rule — see SCHEMA-v2.md)
+    const year = deriveYearFromCode(code);
+    if (year !== -1) yearSet.add(year);
+    else yearSet.add(-1);
+
+    // Per-outcome state for the unit (from this pathway row — unit may appear in
+    // multiple pathways with the same outcome status; we take the first seen).
+    const gloStates = pathPairCols.map(h => h ? classifyGLOState(row[h]) : 'blank');
+
+    let unit = unitMap.get(code);
+    if (!unit) {
+      const gloIds = [];
+      gloStates.forEach((s, i) => { if (s === 'hurdle' || s === 'nonhurdle') gloIds.push(i); });
+      const ats = atsByUnit.get(code) || [];
+      unit = {
+        id: unitMap.size,
+        code,
+        name: code,
+        year,
+        trimester: '',                // CALM does not export trimester data
+        position: 0,
+        cloIds: gloIds.slice(),
+        gloIds,
+        gloStates,
+        formMissing: gloStates.includes('missing'),
+        pathways: new Set(),
+        ats,
+        anyHurdle: false,
+        taskTier: 'developing',
+        bloomLevel: Math.min(Math.max((year > 0 ? year : 1) - 1, 0), 5)
+      };
+      // Cross-check AT inconsistency now that unit-level GLOs are known
+      ats.forEach(at => {
+        at.inconsistentGloIds = at.gloIds.filter(g => !unit.gloIds.includes(g));
+        if (at.formMissing) unit.formMissing = true;
+        if (isHurdleYes(at.hurdle)) unit.anyHurdle = true;
+      });
+      unitMap.set(code, unit);
+    }
+    if (pathway) unit.pathways.add(pathway);
+  });
+
+  // Also seed units that exist only in the tasks file (no pathway membership).
+  atsByUnit.forEach((ats, code) => {
+    if (unitMap.has(code)) return;
+    const year = deriveYearFromCode(code);
+    yearSet.add(year);
+    const unit = {
+      id: unitMap.size,
+      code,
+      name: code,
+      year,
+      trimester: '',
+      position: 0,
+      cloIds: [],
+      gloIds: [],
+      gloStates: new Array(8).fill('blank'),
+      formMissing: false,
+      pathways: new Set(),
+      ats,
+      anyHurdle: false,
+      taskTier: 'developing',
+      bloomLevel: 0
+    };
+    ats.forEach(at => {
+      if (at.formMissing) unit.formMissing = true;
+      if (isHurdleYes(at.hurdle)) unit.anyHurdle = true;
+    });
+    unitMap.set(code, unit);
+  });
+
+  // Roll up taskTier per unit
+  const tierRank = { aol: 3, clo: 2, developing: 1 };
+  unitMap.forEach(u => {
+    let maxRank = 1, maxTier = 'developing';
+    u.ats.forEach(at => {
+      const r = tierRank[at.tier] || 1;
+      if (r > maxRank) { maxRank = r; maxTier = at.tier; }
+    });
+    u.taskTier = maxTier;
+    u.pathways = Array.from(u.pathways);
+  });
+
+  const units = Array.from(unitMap.values());
+  // Sort years: Non-major (0), Y1, Y2, Y3, PG (7), Unclassified (-1)
+  const yearOrder = (y) => y === -1 ? 99 : y === 0 ? -1 : y === 7 ? 50 : y;
+  const years = [...yearSet].sort((a, b) => yearOrder(a) - yearOrder(b));
+  const pathways = [...pathwaySet].sort();
+
+  return { units, years, pathways, pathwayMeta };
+}
+
+// ─── Legacy merged-CSV parser (schema v1 fallback) ────────────────────
+function parseLegacyMerged(rows) {
+  if (!rows.length) return { units: [], years: [], pathways: [], pathwayMeta: new Map() };
+  const headers = Object.keys(rows[0]);
+
+  const colPathway   = findHeader(headers, ['Student Pathway', 'Pathway']);
+  const colLevel     = findHeader(headers, ['Unit Level of Study', 'Year', 'Level']);
+  const colCode      = findHeader(headers, ['Unit Code']);
+  const colTri       = findHeader(headers, ['2026 Teaching Periods', 'Teaching Periods', 'Trimester']);
+  const colATNum     = findHeader(headers, ['AT Number']);
+  const colATTitle   = findHeader(headers, ['AT Title']);
+  const colATType    = findHeader(headers, ['AoL Task Type', 'AT Type']);
+  const colMode      = findHeader(headers, ['Mode']);
+  const colHurdle    = findHeader(headers, ['Hurdle']);
+  const colWeight    = findHeader(headers, ['Weighting Information', 'Weighting']);
+  const colCourseTitle = findHeader(headers, ['Course Title']);
+  const colEnrolments  = findHeader(headers, ['Student Enrolments', 'Enrolments']);
+
+  if (!colCode) {
+    showStatus('error', 'Legacy CSV missing Unit Code column.');
+    return null;
+  }
+
+  const { unitGloCols, atGloCols } = detectLegacyGloCols(headers);
+
+  const unitMap = new Map();
+  const pathwaySet = new Set();
+  const pathwayMeta = new Map();
+  const yearSet = new Set();
+
+  rows.forEach(row => {
+    const code = String(row[colCode] || '').trim();
+    if (!code) return;
+    const pathway = String(row[colPathway] || '').trim();
+    if (pathway) {
+      pathwaySet.add(pathway);
+      if (!pathwayMeta.has(pathway)) {
+        pathwayMeta.set(pathway, {
+          pathway,
+          courseCode: extractCourseCode(pathway),
+          suffix: extractPathwaySuffix(pathway),
+          courseTitle: colCourseTitle ? String(row[colCourseTitle] || '').trim() : '',
+          enrolments: colEnrolments ? String(row[colEnrolments] || '').trim() : '',
+          endorsement: '', accreditation: '', directorComments: ''
+        });
+      }
+    }
+
+    // Prefer the legacy CSV's Unit Level of Study; fall back to code-derived if missing.
+    let year = parseInt(row[colLevel]);
+    if (isNaN(year)) year = deriveYearFromCode(code);
+    yearSet.add(year);
+
+    const tri = String(row[colTri] || '').trim();
+    const atNum = String(row[colATNum] || '').trim();
+    const atKey = code + '|' + atNum + '|' + (row[colATTitle] || '');
+
+    let unit = unitMap.get(code);
+    if (!unit) {
+      const gloStates = unitGloCols.map(h => h ? classifyGLOState(row[h]) : 'blank');
+      const gloIds = [];
+      gloStates.forEach((s, i) => { if (s === 'hurdle' || s === 'nonhurdle') gloIds.push(i); });
+      unit = {
+        id: unitMap.size, code, name: code, year, trimester: tri, position: 0,
+        cloIds: gloIds.slice(), gloIds, gloStates,
+        formMissing: gloStates.includes('missing'),
+        pathways: new Set(), ats: new Map(),
+        anyHurdle: false, taskTier: 'developing',
+        bloomLevel: Math.min(Math.max((year > 0 ? year : 1) - 1, 0), 5)
+      };
+      unitMap.set(code, unit);
+    }
+    if (pathway) unit.pathways.add(pathway);
+
+    if (atNum && !unit.ats.has(atKey)) {
+      const atGloStates = atGloCols.map(h => h ? classifyGLOState(row[h]) : 'blank');
+      const atGloIds = [], atGloIncon = [];
+      atGloStates.forEach((s, i) => {
+        if (s === 'hurdle' || s === 'nonhurdle') {
+          atGloIds.push(i);
+          if (!unit.gloIds.includes(i)) atGloIncon.push(i);
+        }
+      });
+      const at = {
+        number: atNum,
+        title: String(row[colATTitle] || '').trim(),
+        type:  String(row[colATType]  || '').trim(),
+        mode:  String(row[colMode]    || '').trim(),
+        hurdle: String(row[colHurdle] || '').trim(),
+        weighting: String(row[colWeight] || '').trim(),
+        gloIds: atGloIds, inconsistentGloIds: atGloIncon,
+        gloStates: atGloStates,
+        formMissing: atGloStates.includes('missing'),
+        tier: classifyTaskTier(row[colATType])
+      };
+      unit.ats.set(atKey, at);
+      if (at.formMissing) unit.formMissing = true;
+      if (isHurdleYes(at.hurdle)) unit.anyHurdle = true;
+    }
+  });
+
+  const tierRank = { aol: 3, clo: 2, developing: 1 };
+  unitMap.forEach(u => {
+    let maxRank = 1, maxTier = 'developing';
+    u.ats.forEach(at => {
+      const r = tierRank[at.tier] || 1;
+      if (r > maxRank) { maxRank = r; maxTier = at.tier; }
+    });
+    u.taskTier = maxTier;
+    u.ats = Array.from(u.ats.values());
+    u.pathways = Array.from(u.pathways);
+  });
+
+  const units = Array.from(unitMap.values());
+  const yearOrder = (y) => y === -1 ? 99 : y === 0 ? -1 : y === 7 ? 50 : y;
+  const years = [...yearSet].sort((a, b) => yearOrder(a) - yearOrder(b));
+  const pathways = [...pathwaySet].sort();
+  return { units, years, pathways, pathwayMeta };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SCENE SETUP
+// ═══════════════════════════════════════════════════════════════
+function initScene() {
+  const container = document.getElementById('canvas-container');
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(0x0a0b0f, 1);
+  container.appendChild(renderer.domElement);
+
+  camera.position.set(12, 8, 16);
+  camera.lookAt(0, 7, 0);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+  dirLight.position.set(10, 20, 10);
+  scene.add(dirLight);
+  const pointLight = new THREE.PointLight(0xf4a261, 0.4, 30);
+  pointLight.position.set(0, 10, 0);
+  scene.add(pointLight);
+
+  const grid = new THREE.GridHelper(30, 30, 0x1a1b2e, 0x12131f);
+  grid.position.y = -0.5;
+  scene.add(grid);
+
+  spiralGroup = new THREE.Group();
+  scene.add(spiralGroup);
+
+  container.addEventListener('mousedown', e => { if (e.button === 0) { isDragging = true; previousMouse = { x: e.clientX, y: e.clientY }; } });
+  container.addEventListener('mousemove', e => {
+    if (isDragging) {
+      targetSpherical.theta -= (e.clientX - previousMouse.x) * 0.005;
+      targetSpherical.phi = Math.max(0.2, Math.min(Math.PI - 0.2, targetSpherical.phi - (e.clientY - previousMouse.y) * 0.005));
+      previousMouse = { x: e.clientX, y: e.clientY };
+    }
+    handleHover(e);
+  });
+  container.addEventListener('mouseup', () => isDragging = false);
+  container.addEventListener('mouseleave', () => isDragging = false);
+  container.addEventListener('wheel', e => { targetSpherical.radius = Math.max(8, Math.min(40, targetSpherical.radius + e.deltaY * 0.02)); });
+  container.addEventListener('click', handleClick);
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  animate();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BUILD MODEL — applies pathway/coreOnly filter, then draws
+// ═══════════════════════════════════════════════════════════════
+function visibleUnits() {
+  let units = curriculum.units;
+  // Multi-select pathway filter (empty Set = no filter)
+  if (activePathways.size > 0) {
+    units = units.filter(u => u.pathways.some(p => activePathways.has(p)));
+  }
+  // Core Only quick-toggle is an additional filter on top of that
+  if (coreOnly) {
+    units = units.filter(u => u.pathways.some(p => /core\s*only/i.test(p)));
+  }
+  return units;
+}
+
+function assignPositions(units, years) {
+  // CALM does not export trimester data — distribute units evenly around each
+  // year ring, sorted by unit code. The schema-v2 year axis (Non-major / Y1 /
+  // Y2 / Y3 / PG) replaces the v1 TRI sub-rings.
+  years.forEach(y => {
+    const inYear = units.filter(u => u.year === y).sort((a, b) => a.code.localeCompare(b.code));
+    const n = inYear.length || 1;
+    inYear.forEach((u, i) => {
+      u.angle = (i + 0.5) / n * Math.PI * 2;
+    });
+  });
+}
+
+function buildModel() {
+  while (spiralGroup.children.length > 0) spiralGroup.remove(spiralGroup.children[0]);
+  const toRemove = [];
+  scene.children.forEach(c => { if (c.userData && c.userData.dynamic) toRemove.push(c); });
+  toRemove.forEach(c => scene.remove(c));
+  unitMeshes = []; gloMeshes = []; cloMeshes = [];
+
+  const units = visibleUnits();
+  const years = curriculum.years;
+  if (!units.length || !years.length) {
+    document.getElementById('dashboard-subtitle').textContent = 'No units match the current filters.';
+    return;
+  }
+
+  assignPositions(units, years);
+
+  const numYears = years.length;
+
+  // axis
+  const axisMat = new THREE.MeshPhongMaterial({ color: 0x2a2b3e, transparent: true, opacity: 0.4 });
+  const axisGeo = new THREE.CylinderGeometry(0.08, 0.08, numYears * heightPerYear + 5, 16);
+  const axis = new THREE.Mesh(axisGeo, axisMat);
+  axis.position.y = (numYears * heightPerYear + 5) / 2 - 0.5;
+  axis.userData = { dynamic: true };
+  scene.add(axis);
+
+  const LEVEL_COLORS = [0x2a9d8f, 0xe9c46a, 0xe76f51, 0xa06cd5, 0x6d9dc5];
+
+  years.forEach((yr, yi) => {
+    const bandY = yi * heightPerYear + heightPerYear * 0.4;
+    const bandGeo = new THREE.CylinderGeometry(baseRadius + 1.5, baseRadius + 1.5, 0.02, 48);
+    const bandMat = new THREE.MeshBasicMaterial({ color: LEVEL_COLORS[yi % LEVEL_COLORS.length], transparent: true, opacity: 0.04, side: THREE.DoubleSide });
+    const band = new THREE.Mesh(bandGeo, bandMat); band.position.y = bandY; band.userData = { dynamic: true }; scene.add(band);
+
+    const ringGeo = new THREE.RingGeometry(baseRadius + 1.3, baseRadius + 1.5, 64);
+    const ringMat = new THREE.MeshBasicMaterial({ color: LEVEL_COLORS[yi % LEVEL_COLORS.length], transparent: true, opacity: 0.1, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(ringGeo, ringMat); ring.rotation.x = -Math.PI / 2; ring.position.y = bandY; ring.userData = { dynamic: true }; scene.add(ring);
+
+    // Year label — width sized for "Non-major" (longest label in schema v2)
+    const lbl = yearLabel(yr);
+    const yCanvas = document.createElement('canvas'); yCanvas.width = 192; yCanvas.height = 64;
+    const yCtx = yCanvas.getContext('2d');
+    yCtx.fillStyle = '#f4a261';
+    yCtx.font = (lbl.length > 4 ? 'bold 24px' : 'bold 36px') + ' DM Sans, sans-serif';
+    yCtx.textAlign = 'center';
+    yCtx.fillText(lbl, 96, 42);
+    const yTex = new THREE.CanvasTexture(yCanvas);
+    const ySprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: yTex, transparent: true }));
+    ySprite.scale.set(lbl.length > 4 ? 1.6 : 1.2, 0.6, 1);
+    ySprite.position.set(-1.0, yi * heightPerYear + 0.8, 0);
+    ySprite.userData = { dynamic: true }; scene.add(ySprite);
+  });
+
+  // ── UNIT NODES ──
+  units.forEach((unit, i) => {
+    const yi = years.indexOf(unit.year);
+    const angle = unit.angle != null ? unit.angle : (i / units.length) * Math.PI * 2;
+    const height = yi * heightPerYear + heightPerYear * 0.4;
+    const nodeSize = unit.taskTier === 'aol' ? 0.38 : unit.taskTier === 'clo' ? 0.30 : 0.22;
+    let geo;
+    if (unit.taskTier === 'aol') geo = new THREE.IcosahedronGeometry(nodeSize, 1);
+    else if (unit.taskTier === 'clo') geo = new THREE.BoxGeometry(nodeSize * 1.4, nodeSize * 1.4, nodeSize * 1.4);
+    else geo = new THREE.SphereGeometry(nodeSize, 12, 12);
+    const mat = new THREE.MeshPhongMaterial({ color: 0xc8c4bd, emissive: 0x887f73, emissiveIntensity: 0.08, shininess: 60, transparent: true, opacity: 0.85 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(Math.cos(angle) * baseRadius, height, Math.sin(angle) * baseRadius);
+    mesh.userData = { unit, basePosition: mesh.position.clone(), targetPosition: mesh.position.clone() };
+    spiralGroup.add(mesh); unitMeshes.push(mesh);
+
+    // Hurdle indicators: red ring (pulses) + a flag icon ⚑ floating above
+    if (unit.anyHurdle) {
+      const hRingGeo = new THREE.RingGeometry(nodeSize + 0.14, nodeSize + 0.24, 32);
+      const hRingMat = new THREE.MeshBasicMaterial({ color: 0xe63946, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
+      const hRing = new THREE.Mesh(hRingGeo, hRingMat);
+      hRing.position.copy(mesh.position);
+      hRing.userData = { isHurdleRing: true, parentMesh: mesh };
+      spiralGroup.add(hRing);
+
+      // Flag icon sprite — always visible, doesn't get overwritten by GLO filter colours
+      const flagCanvas = document.createElement('canvas');
+      flagCanvas.width = 64; flagCanvas.height = 64;
+      const fctx = flagCanvas.getContext('2d');
+      fctx.fillStyle = '#e63946';
+      fctx.strokeStyle = '#ffffff';
+      fctx.lineWidth = 3;
+      fctx.font = 'bold 52px sans-serif';
+      fctx.textAlign = 'center'; fctx.textBaseline = 'middle';
+      fctx.strokeText('⚑', 32, 36);
+      fctx.fillText('⚑', 32, 36);
+      const flagTex = new THREE.CanvasTexture(flagCanvas);
+      const flagSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: flagTex, transparent: true, depthTest: false }));
+      flagSprite.scale.set(0.55, 0.55, 1);
+      flagSprite.position.set(
+        Math.cos(angle) * baseRadius,
+        height + nodeSize + 0.35,
+        Math.sin(angle) * baseRadius
+      );
+      flagSprite.userData = { isHurdleFlag: true, parentMesh: mesh };
+      spiralGroup.add(flagSprite);
+    }
+
+    // Form-not-received icon ⚠ floating above (yellow), if applicable
+    if (unit.formMissing) {
+      const fCanvas = document.createElement('canvas');
+      fCanvas.width = 64; fCanvas.height = 64;
+      const fctx2 = fCanvas.getContext('2d');
+      fctx2.fillStyle = '#ffb703';
+      fctx2.strokeStyle = '#14151f';
+      fctx2.lineWidth = 3;
+      fctx2.font = 'bold 48px sans-serif';
+      fctx2.textAlign = 'center'; fctx2.textBaseline = 'middle';
+      fctx2.strokeText('⚠', 32, 36);
+      fctx2.fillText('⚠', 32, 36);
+      const fTex = new THREE.CanvasTexture(fCanvas);
+      const fSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: fTex, transparent: true, depthTest: false }));
+      fSprite.scale.set(0.45, 0.45, 1);
+      const offset = unit.anyHurdle ? 0.7 : 0.35;
+      fSprite.position.set(
+        Math.cos(angle) * baseRadius,
+        height + nodeSize + offset,
+        Math.sin(angle) * baseRadius
+      );
+      fSprite.userData = { isFormFlag: true, parentMesh: mesh };
+      spiralGroup.add(fSprite);
+    }
+
+    // Unit label
+    const lblCanvas = document.createElement('canvas'); lblCanvas.width = 192; lblCanvas.height = 48;
+    const lblCtx = lblCanvas.getContext('2d');
+    lblCtx.fillStyle = '#9a968f'; lblCtx.font = '18px DM Sans, sans-serif'; lblCtx.textAlign = 'center';
+    lblCtx.fillText(unit.code, 96, 30);
+    const lblTex = new THREE.CanvasTexture(lblCanvas);
+    const lblSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: lblTex, transparent: true }));
+    lblSprite.scale.set(1.1, 0.3, 1);
+    lblSprite.position.set(Math.cos(angle) * (baseRadius + 0.7), height, Math.sin(angle) * (baseRadius + 0.7));
+    spiralGroup.add(lblSprite);
+
+    // unit -> CLO connections — built as TubeGeometry meshes so the user
+    // can control thickness (raw lines are pinned to 1px in WebGL).
+    unit.cloIds.forEach(cloId => {
+      const cloAngle = (cloId / 8) * Math.PI * 2;
+      const cloH = numYears * heightPerYear - 0.5;
+      const cloR = baseRadius - 1.2;
+      const cloPos = new THREE.Vector3(Math.cos(cloAngle) * cloR, cloH, Math.sin(cloAngle) * cloR);
+      const tube = makeConnectorTube(mesh.position.clone(), cloPos, cloId, unit.year);
+      spiralGroup.add(tube);
+    });
+  });
+
+  // ── CLO RING ──
+  const cloHeight = numYears * heightPerYear - 0.5;
+  const cloRadius = baseRadius - 1.2;
+  CLO_DATA.forEach((clo, i) => {
+    const angle = (i / 8) * Math.PI * 2;
+    const parentColor = new THREE.Color(GLO_COLORS[clo.gloId]);
+    const geo = new THREE.OctahedronGeometry(0.28, 0);
+    const mat = new THREE.MeshPhongMaterial({ color: parentColor, emissive: parentColor, emissiveIntensity: 0.2, shininess: 100, transparent: true, opacity: 0.85 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(Math.cos(angle) * cloRadius, cloHeight, Math.sin(angle) * cloRadius);
+    mesh.userData = { isCLO: true, cloId: clo.id, gloId: clo.gloId, cloData: clo, basePosition: mesh.position.clone() };
+    spiralGroup.add(mesh); cloMeshes.push(mesh);
+
+    const cCanvas = document.createElement('canvas'); cCanvas.width = 192; cCanvas.height = 48;
+    const cCtx = cCanvas.getContext('2d');
+    cCtx.fillStyle = GLO_COLORS[clo.gloId]; cCtx.font = 'bold 22px DM Sans, sans-serif'; cCtx.textAlign = 'center';
+    cCtx.fillText(clo.short, 96, 32);
+    const cTex = new THREE.CanvasTexture(cCanvas);
+    const cSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: cTex, transparent: true }));
+    cSprite.scale.set(1.2, 0.35, 1);
+    cSprite.position.set(Math.cos(angle) * (cloRadius + 0.55), cloHeight, Math.sin(angle) * (cloRadius + 0.55));
+    spiralGroup.add(cSprite);
+  });
+
+  // ── GLO NODES ──
+  const gloTopHeight = numYears * heightPerYear + 2;
+  const gloRadius = 4.5;
+  for (let g = 0; g < 8; g++) {
+    const angle = (g / 8) * Math.PI * 2;
+    const gloColor = new THREE.Color(GLO_COLORS[g]);
+    const geo = new THREE.OctahedronGeometry(0.5, 1);
+    const mat = new THREE.MeshPhongMaterial({ color: gloColor, emissive: gloColor, emissiveIntensity: 0.35, shininess: 120, transparent: true, opacity: 0.95 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(Math.cos(angle) * gloRadius, gloTopHeight, Math.sin(angle) * gloRadius);
+    mesh.userData = { isGLO: true, gloId: g, basePosition: mesh.position.clone() };
+    spiralGroup.add(mesh); gloMeshes.push(mesh);
+
+    const gCanvas = document.createElement('canvas'); gCanvas.width = 256; gCanvas.height = 80;
+    const gCtx = gCanvas.getContext('2d');
+    gCtx.fillStyle = GLO_COLORS[g]; gCtx.font = 'bold 28px DM Sans, sans-serif'; gCtx.textAlign = 'center';
+    gCtx.fillText(`GLO ${g + 1}`, 128, 35);
+    gCtx.font = '16px DM Sans, sans-serif'; gCtx.fillStyle = '#c8c4bd';
+    gCtx.fillText(GLO_NAMES[g].substring(0, 24), 128, 60);
+    const gTex = new THREE.CanvasTexture(gCanvas);
+    const gSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: gTex, transparent: true }));
+    gSprite.scale.set(2.4, 0.75, 1);
+    gSprite.position.set(Math.cos(angle) * gloRadius, gloTopHeight + 0.8, Math.sin(angle) * gloRadius);
+    spiralGroup.add(gSprite);
+
+    const rGeo = new THREE.RingGeometry(0.6, 0.72, 32);
+    const rMat = new THREE.MeshBasicMaterial({ color: gloColor, transparent: true, opacity: 0.2, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(rGeo, rMat); ring.position.copy(mesh.position);
+    ring.userData = { isGLORing: true, gloId: g };
+    spiralGroup.add(ring);
+  }
+
+  buildYearNav(years);
+  buildGLOList(units);
+  applyLineColors();
+  document.getElementById('dashboard-subtitle').innerHTML =
+    `${units.length} units · ${numYears} levels · ${curriculum.pathways.length} pathways · ` +
+    `<a href="#" onclick="showModal();return false;" style="color:var(--accent);">replace files</a>`;
+  showStatus('success', `Loaded ${units.length} units`);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UI COMPONENTS
+// ═══════════════════════════════════════════════════════════════
+function buildPathwayDropdown(pathways) {
+  // Sort pathways by (course title || course code) then by suffix
+  const sorted = [...pathways].sort((a, b) => {
+    const ma = curriculum.pathwayMeta.get(a) || {}, mb = curriculum.pathwayMeta.get(b) || {};
+    const ka = (ma.courseTitle || ma.courseCode || a).toLowerCase();
+    const kb = (mb.courseTitle || mb.courseCode || b).toLowerCase();
+    if (ka !== kb) return ka < kb ? -1 : 1;
+    return (ma.suffix || '').localeCompare(mb.suffix || '');
+  });
+
+  // Group label by course title for cleaner UI: insert a small header when course changes
+  const opts = document.getElementById('pathway-options');
+  let html = '';
+  let currentTitle = null;
+  sorted.forEach(p => {
+    const meta = curriculum.pathwayMeta.get(p) || {};
+    const title = meta.courseTitle || meta.courseCode || p;
+    if (title !== currentTitle) {
+      html += `<div class="pathway-group-header" title="${escapeAttr(meta.courseCode||'')}">${escapeHtml(title)}${meta.courseCode ? ` <span style="color:var(--text-dim);font-weight:normal;font-size:9px;">(${escapeHtml(meta.courseCode)})</span>` : ''}</div>`;
+      currentTitle = title;
+    }
+    const suffix = meta.suffix || p;
+    html += `
+      <label class="pathway-option" data-pathway="${escapeAttr(p)}" data-search="${escapeAttr((title + ' ' + suffix + ' ' + p).toLowerCase())}">
+        <input type="checkbox" ${activePathways.has(p)?'checked':''} onchange="togglePathway('${escapeJsString(p)}', this.checked)">
+        <span>${escapeHtml(suffix)}</span>
+      </label>`;
+  });
+  opts.innerHTML = html;
+  refreshPathwayButton();
+}
+
+function filterPathwayOptions(q) {
+  const needle = String(q || '').toLowerCase().trim();
+  document.querySelectorAll('#pathway-options .pathway-option').forEach(el => {
+    const hay = el.getAttribute('data-search') || '';
+    el.style.display = (!needle || hay.indexOf(needle) >= 0) ? '' : 'none';
+  });
+  // Hide group headers whose siblings are all filtered out
+  const headers = document.querySelectorAll('#pathway-options .pathway-group-header');
+  headers.forEach(h => {
+    let n = h.nextElementSibling;
+    let anyVisible = false;
+    while (n && !n.classList.contains('pathway-group-header')) {
+      if (n.style.display !== 'none') { anyVisible = true; break; }
+      n = n.nextElementSibling;
+    }
+    h.style.display = anyVisible ? '' : 'none';
+  });
+}
+
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escapeAttr(s) { return escapeHtml(s); }
+function escapeJsString(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+function togglePathwayPanel(e) {
+  if (e) e.stopPropagation();
+  document.getElementById('pathway-panel').classList.toggle('show');
+}
+
+function togglePathway(p, on) {
+  if (on) activePathways.add(p); else activePathways.delete(p);
+  refreshPathwayButton();
+  buildModel();
+}
+
+function clearPathways() {
+  activePathways.clear();
+  document.querySelectorAll('#pathway-options input').forEach(cb => cb.checked = false);
+  refreshPathwayButton();
+  buildModel();
+}
+
+function selectAllPathways() {
+  activePathways.clear();
+  curriculum.pathways.forEach(p => activePathways.add(p));
+  document.querySelectorAll('#pathway-options input').forEach(cb => cb.checked = true);
+  refreshPathwayButton();
+  buildModel();
+}
+
+function selectCorePathways() {
+  activePathways.clear();
+  curriculum.pathways.forEach(p => { if (/core\s*only/i.test(p)) activePathways.add(p); });
+  document.querySelectorAll('#pathway-options input').forEach(cb => {
+    const lbl = cb.closest('.pathway-option');
+    const p = lbl ? lbl.getAttribute('data-pathway') : null;
+    cb.checked = p ? activePathways.has(p) : false;
+  });
+  refreshPathwayButton();
+  buildModel();
+}
+
+function refreshPathwayButton() {
+  const btn = document.getElementById('pathway-btn');
+  const countEl = document.getElementById('pathway-count');
+  const total = curriculum.pathways.length;
+  const n = activePathways.size;
+  if (n === 0) {
+    btn.textContent = 'All pathways';
+    btn.classList.remove('has-selection');
+  } else if (n === 1) {
+    btn.textContent = pathwayLabel([...activePathways][0]);
+    btn.classList.add('has-selection');
+  } else if (n <= 3) {
+    btn.textContent = [...activePathways].map(pathwayLabel).join(' · ');
+    btn.classList.add('has-selection');
+  } else {
+    btn.textContent = n + ' pathways selected';
+    btn.classList.add('has-selection');
+  }
+  if (countEl) countEl.textContent = (n === 0 ? 'No filter — all ' + total : n + ' of ' + total) + ' pathways';
+}
+
+// Click-outside to close the panel
+document.addEventListener('click', e => {
+  const panel = document.getElementById('pathway-panel');
+  const wrap = document.getElementById('pathway-multi');
+  if (panel && wrap && !wrap.contains(e.target)) panel.classList.remove('show');
+
+  const dPanel = document.getElementById('display-panel');
+  const dWrap = document.querySelector('.display-wrap');
+  if (dPanel && dWrap && !dWrap.contains(e.target)) dPanel.classList.remove('show');
+});
+
+// ─── Display-controls panel ─────────────────────────────────────
+function toggleDisplayPanel(e) {
+  if (e) e.stopPropagation();
+  document.getElementById('display-panel').classList.toggle('show');
+}
+
+function onLineColorModeChange(mode) {
+  lineColorMode = mode;
+  document.getElementById('line-color-pick-row').style.display = (mode === 'mono') ? 'flex' : 'none';
+  applyLineColors();
+}
+
+function onLineColorPickChange(hex) {
+  lineMonoColor = hex;
+  if (lineColorMode === 'mono') applyLineColors();
+}
+
+function onLineOpacityChange(v) {
+  lineBaseOpacity = parseInt(v, 10) / 100;
+  document.getElementById('line-opacity-val').textContent = lineBaseOpacity.toFixed(2);
+  applyLineColors();
+}
+
+function onLineWidthChange(v) {
+  lineWidth = parseInt(v, 10);
+  document.getElementById('line-width-val').textContent = lineWidth;
+  rebuildLineGeometry();
+}
+
+function onLineCurveChange(v) {
+  lineCurve = v;
+  rebuildLineGeometry();
+}
+
+// Build a connector tube from p1 (unit) to p2 (CLO/GLO). Stores its
+// endpoints in userData so we can rebuild the geometry when width changes.
+function makeConnectorTube(p1, p2, gloId, unitYear) {
+  const tube = new THREE.Mesh(
+    buildTubeGeometry(p1, p2),
+    new THREE.MeshBasicMaterial({
+      color: pickLineColor(gloId, unitYear),
+      transparent: true,
+      opacity: lineBaseOpacity,
+      depthWrite: false
+    })
+  );
+  tube.userData = {
+    gloConnectionLine: true,
+    gloId, unitYear,
+    p1: p1.clone(), p2: p2.clone()
+  };
+  return tube;
+}
+
+function buildTubeGeometry(p1, p2) {
+  const radius = Math.max(0.012, lineWidth * 0.012);  // ~0.012 .. 0.12
+  if (lineCurve === 'straight') {
+    const curve = new THREE.LineCurve3(p1, p2);
+    return new THREE.TubeGeometry(curve, 1, radius, 6, false);
+  }
+  const mid = p1.clone().lerp(p2, 0.5);
+  // Slight bulge so curves don't all collapse on the straight diagonal
+  mid.y = (p1.y + p2.y) / 2 + 0.05;
+  const curve = new THREE.CatmullRomCurve3([p1, mid, p2]);
+  return new THREE.TubeGeometry(curve, 16, radius, 6, false);
+}
+
+function pickLineColor(gloId, unitYear) {
+  if (lineColorMode === 'mono') return new THREE.Color(lineMonoColor);
+  if (lineColorMode === 'year') return new THREE.Color(yearColor(unitYear));
+  return new THREE.Color(GLO_COLORS[gloId] || '#888888');
+}
+
+// Recolour every connector tube in place. Called when the user changes a
+// display setting and after buildModel() finishes.
+function applyLineColors() {
+  if (!spiralGroup) return;
+  spiralGroup.children.forEach(child => {
+    if (!child.userData || !child.userData.gloConnectionLine) return;
+    if (!child.material) return;
+    child.material.color.copy(pickLineColor(child.userData.gloId, child.userData.unitYear));
+    if (activeGLO < 0) child.material.opacity = lineBaseOpacity;
+  });
+}
+
+// Rebuild tube geometry when the user changes line width or curvature.
+function rebuildLineGeometry() {
+  if (!spiralGroup) return;
+  spiralGroup.children.forEach(child => {
+    if (!child.userData || !child.userData.gloConnectionLine) return;
+    if (!child.userData.p1 || !child.userData.p2) return;
+    if (child.geometry) child.geometry.dispose();
+    child.geometry = buildTubeGeometry(child.userData.p1, child.userData.p2);
+  });
+}
+
+function buildYearNav(years) {
+  // Sentinel for "all" is 999 (years now include 0 = Non-major and -1 = Unclassified,
+  // so the old "0 = all" overload from v2 no longer works).
+  const nav = document.getElementById('year-nav');
+  nav.innerHTML = '<button class="nav-btn active" data-year="999">All</button>';
+  years.forEach(y => {
+    nav.innerHTML += `<button class="nav-btn" data-year="${y}">${yearLabel(y)}</button>`;
+  });
+  nav.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      nav.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeYear = parseInt(btn.dataset.year);
+      filterUnits();
+    });
+  });
+}
+
+// GLO panel as a table:
+//   Total units (in current view) at the top.
+//   One row per GLO with:
+//     • Assessed = unit's GLO state is "Yes" OR "Non-hurdle Yes"
+//     • Assured  = unit's GLO state is "Yes" (the full / hurdle assessment)
+function buildGLOList(units) {
+  const list = document.getElementById('glo-list');
+  const total = units.length;
+
+  const rows = GLO_NAMES.map((name, i) => {
+    let assessed = 0, assured = 0;
+    units.forEach(u => {
+      const s = u.gloStates ? u.gloStates[i] : (u.gloIds.includes(i) ? 'hurdle' : 'blank');
+      if (s === 'hurdle' || s === 'nonhurdle') assessed++;
+      if (s === 'hurdle') assured++;
+    });
+    const activeClass = activeGLO === i ? 'active' : '';
+    return `<tr class="${activeClass}" onclick="highlightGLO(${i})" title="GLO${i+1}: ${name} — click to filter">
+      <td><span class="glo-dot" style="background:${GLO_COLORS[i]}"></span><strong>GLO${i+1}</strong> <span style="color:var(--text-dim);font-size:10px;">${name.substring(0,18)}${name.length>18?'…':''}</span></td>
+      <td class="num ${assessed===0?'zero':''}">${assessed}</td>
+      <td class="num assured ${assured===0?'zero':''}">${assured}</td>
+    </tr>`;
+  }).join('');
+
+  list.innerHTML = `
+    <div class="glo-summary"><strong>${total}</strong> ${total===1?'unit':'units'} in view</div>
+    <table class="glo-table">
+      <thead>
+        <tr><th>GLO</th><th class="num" title="Any 'Yes' (hurdle or non-hurdle)">Assessed</th><th class="num" title="Full 'Yes' / hurdle assessment">Assured</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div style="margin-top:10px; font-size:9px; color:var(--text-dim); line-height:1.4;">
+      <strong>Assessed</strong> = any 'Yes' / 'Non-hurdle Yes'<br>
+      <strong>Assured</strong> = full 'Yes' (hurdle / formal AoL)
+    </div>
+  `;
+}
+
+// Render all 8 GLOs as chips with state-based styling.
+//   hurdle      → solid filled chip (Yes / Hurdle Yes)
+//   nonhurdle   → outlined chip (Non-hurdle Yes)
+//   no/notassessed → faded grey chip
+//   missing     → orange "Form not received" chip
+function renderGloChipsRow(states, inconsistentSet) {
+  const chips = [];
+  for (let g = 0; g < 8; g++) {
+    const s = states ? states[g] : 'blank';
+    const inc = inconsistentSet && inconsistentSet.has(g);
+    let style = '';
+    let title = `GLO${g+1}: ${GLO_NAMES[g]} — ${stateLabel(s)}`;
+    if (inc) title += ' · INCONSISTENT (unit does not cover)';
+    if (s === 'hurdle')         style = `background:${GLO_COLORS[g]};`;
+    else if (s === 'nonhurdle') style = `color:${GLO_COLORS[g]};border-color:${GLO_COLORS[g]};`;
+    chips.push(`<span class="at-glo-chip ${s} ${inc?'inconsistent':''}" style="${style}" title="${title}">GLO${g+1}</span>`);
+  }
+  return '<div class="at-glo-row">'+chips.join('')+'</div>';
+}
+
+function stateLabel(s) {
+  return ({
+    hurdle: 'Yes',
+    nonhurdle: 'Non-hurdle Yes',
+    no: 'No',
+    notassessed: 'Not Assessed',
+    missing: 'Form not received',
+    dataerror: 'Data Error',
+    tbc: 'TBC',
+    blank: '—'
+  })[s] || s;
+}
+
+function showDetail(unit) {
+  const panel = document.getElementById('detail-panel');
+  const content = document.getElementById('detail-content');
+
+  const tierIcons = { aol: '◆ AOL', clo: '▣ CLO', developing: '○ Developing' };
+  const atHtml = unit.ats.map(at => {
+    const isH = isHurdleYes(at.hurdle);
+    const inconsistentSet = new Set(at.inconsistentGloIds);
+    return `<div class="at-card ${isH?'hurdle':''}">
+      <div class="at-card-head">
+        <span class="at-num">${at.number}</span>
+        <span class="at-title">${at.title || '<em>(no title)</em>'}</span>
+        ${isH ? '<span class="hurdle-badge">Hurdle</span>' : ''}
+        ${at.formMissing ? '<span class="hurdle-badge" style="background:#ffb703;color:#14151f;">Form ?</span>' : ''}
+      </div>
+      <div class="at-meta">
+        <span>${tierIcons[at.tier] || at.type}</span>
+        ${at.mode ? '<span>· '+escapeHtml(at.mode)+'</span>' : ''}
+        ${at.participation ? '<span>· '+escapeHtml(at.participation)+'</span>' : ''}
+        ${at.weighting ? '<span>· '+escapeHtml(at.weighting)+'</span>' : ''}
+      </div>
+      ${at.studentOutput ? '<div class="at-meta" style="margin-top:2px;"><span style="opacity:0.8;">Output: '+escapeHtml(at.studentOutput)+'</span></div>' : ''}
+      ${renderGloChipsRow(at.gloStates, inconsistentSet)}
+    </div>`;
+  }).join('') || '<div style="color:var(--text-dim);font-size:12px;">No assessment tasks recorded.</div>';
+
+  const pathwaysHtml = unit.pathways.map(p => {
+    const meta = curriculum.pathwayMeta && curriculum.pathwayMeta.get(p);
+    const display = meta && meta.courseTitle ? `${meta.courseTitle} — ${meta.suffix || p}` : p;
+    return `<span style="display:inline-block;padding:2px 6px;background:rgba(255,255,255,0.05);border-radius:3px;margin:2px;font-size:11px;" title="${escapeAttr(p)}">${escapeHtml(display)}</span>`;
+  }).join('');
+  const unitGloHtml = renderGloChipsRow(unit.gloStates, null);
+
+  const formBanner = unit.formMissing
+    ? '<div class="form-banner">⚠ One or more GLO mappings are marked <strong>Form not received</strong> for this unit.</div>'
+    : '';
+
+  const detailLine = `${yearLabel(unit.year)} · ${tierIcons[unit.taskTier]}` +
+                     (unit.trimester ? ` · ${unit.trimester}` : '');
+  content.innerHTML = `
+    <div class="detail-title">${unit.code}</div>
+    <div class="detail-year">${detailLine}</div>
+    ${formBanner}
+    <div class="detail-section"><h4>Pathways (${unit.pathways.length})</h4>${pathwaysHtml}</div>
+    <div class="detail-section"><h4>Unit-level GLOs</h4>${unitGloHtml}
+      <div style="font-size:10px;color:var(--text-dim);margin-top:6px;">Filled = Yes · Outlined = Non-hurdle Yes · Faded = No / Not Assessed · Red = Data Error · Blue = TBC · Amber = Form not received</div>
+    </div>
+    <div class="detail-section"><h4>Assessment Tasks (${unit.ats.length})</h4>${atHtml}</div>
+  `;
+  panel.classList.add('visible');
+}
+
+function closeDetail() { document.getElementById('detail-panel').classList.remove('visible'); }
+
+// ═══════════════════════════════════════════════════════════════
+// FILTER / HIGHLIGHT
+// ═══════════════════════════════════════════════════════════════
+function highlightGLO(gloId) {
+  const turningOn = activeGLO !== gloId;
+  activeGLO = activeGLO === gloId ? -1 : gloId;
+  filterUnits();
+  // When the user turns a GLO on, evaluate the assurance/AOL conditions and
+  // play the celebratory animation if they're met.
+  if (turningOn && activeGLO === gloId) {
+    runGLOCelebration(gloId);
+  }
+}
+
+// Returns true if the GLO is "assured" (state === 'hurdle') in at least one
+// VISIBLE unit at every year level present in the curriculum.
+function isGLOAssuredEveryYear(gloId, units) {
+  const yearsPresent = [...new Set(units.map(u => u.year))].sort((a,b) => a - b);
+  if (yearsPresent.length === 0) return false;
+  return yearsPresent.every(y =>
+    units.some(u => u.year === y && u.gloStates && u.gloStates[gloId] === 'hurdle')
+  );
+}
+
+// % of visible units flagged as AOL (taskTier === 'aol').
+function aolFraction(units) {
+  if (units.length === 0) return 0;
+  return units.filter(u => u.taskTier === 'aol').length / units.length;
+}
+
+function runGLOCelebration(gloId) {
+  const units = visibleUnits();
+  const everyYear = isGLOAssuredEveryYear(gloId, units);
+  if (!everyYear) return;       // condition not met → no animation
+
+  const aolPct = aolFraction(units);
+  const isGold = aolPct >= 0.5; // gold tier when AOL coverage ≥ 50%
+
+  // Step through years bottom-to-top, flashing the matching connector lines
+  const yearsAsc = [...new Set(units.map(u => u.year))].sort((a,b) => a - b);
+  yearsAsc.forEach((year, idx) => {
+    setTimeout(() => flashYearLines(year, gloId, isGold), idx * 350);
+  });
+  // Finish with a burst at the GLO node
+  setTimeout(() => spawnBurst(gloId, isGold), yearsAsc.length * 350 + 100);
+}
+
+// Briefly amplify the brightness/opacity of the connector tubes that go from
+// units in a given year to a given GLO/CLO. Auto-resets after ~700ms.
+function flashYearLines(year, gloId, isGold) {
+  spiralGroup.children.forEach(child => {
+    if (!child.userData || !child.userData.gloConnectionLine) return;
+    if (child.userData.gloId !== gloId) return;
+    if (child.userData.unitYear !== year) return;
+    if (!child.material) return;
+    const origOpacity = child.material.opacity;
+    const origColor = child.material.color.clone();
+    child.material.opacity = 0.95;
+    child.material.color.set(isGold ? '#ffd700' : '#e6e6e6');
+    setTimeout(() => {
+      child.material.opacity = origOpacity;
+      child.material.color.copy(origColor);
+      applyLineColors();   // restore the chosen colour scheme
+    }, 700);
+  });
+}
+
+// Spawn a starburst sprite at the GLO node and animate it.
+function spawnBurst(gloId, isGold) {
+  const gloMesh = gloMeshes[gloId];
+  if (!gloMesh) return;
+
+  // Build a starburst texture on a canvas
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const ctx = cv.getContext('2d');
+  const cx = 128, cy = 128;
+  const colorMain = isGold ? '#ffd700' : '#f0f0f0';
+  const colorGlow = isGold ? '#fff5b8' : '#ffffff';
+  // Radial gradient core
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 110);
+  grad.addColorStop(0, colorGlow);
+  grad.addColorStop(0.3, colorMain);
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 256);
+  // Star rays
+  ctx.strokeStyle = colorGlow;
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 16; i++) {
+    const ang = (i / 16) * Math.PI * 2;
+    const r1 = 30, r2 = 110;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1);
+    ctx.lineTo(cx + Math.cos(ang) * r2, cy + Math.sin(ang) * r2);
+    ctx.stroke();
+  }
+  // Cross spikes (longer)
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = colorMain;
+  for (let i = 0; i < 4; i++) {
+    const ang = (i / 4) * Math.PI * 2 + Math.PI / 8;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(ang) * 0, cy + Math.sin(ang) * 0);
+    ctx.lineTo(cx + Math.cos(ang) * 124, cy + Math.sin(ang) * 124);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, opacity: 1 }));
+  sprite.position.copy(gloMesh.position);
+  sprite.scale.set(0.4, 0.4, 1);
+  sprite.userData = { isBurst: true, t0: performance.now(), maxScale: isGold ? 5.5 : 4.5, gold: isGold };
+  spiralGroup.add(sprite);
+
+  // Sparkle particles for gold tier
+  if (isGold) {
+    for (let s = 0; s < 14; s++) {
+      const sCv = document.createElement('canvas');
+      sCv.width = sCv.height = 32;
+      const sctx = sCv.getContext('2d');
+      const sg = sctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+      sg.addColorStop(0, '#fff8c4');
+      sg.addColorStop(0.4, '#ffd700');
+      sg.addColorStop(1, 'rgba(0,0,0,0)');
+      sctx.fillStyle = sg;
+      sctx.fillRect(0, 0, 32, 32);
+      const stex = new THREE.CanvasTexture(sCv);
+      const spark = new THREE.Sprite(new THREE.SpriteMaterial({ map: stex, transparent: true, depthTest: false }));
+      const dir = Math.random() * Math.PI * 2;
+      const vy = 0.8 + Math.random() * 1.2;
+      const vr = 1.2 + Math.random() * 1.4;
+      spark.position.copy(gloMesh.position);
+      spark.scale.set(0.2, 0.2, 1);
+      spark.userData = { isSparkle: true, t0: performance.now(),
+                         vx: Math.cos(dir) * vr, vy: vy, vz: Math.sin(dir) * vr,
+                         origin: gloMesh.position.clone() };
+      spiralGroup.add(spark);
+    }
+  }
+}
+
+function filterUnits() {
+  const neutralColor = new THREE.Color('#c8c4bd');
+  const neutralEmissive = new THREE.Color('#887f73');
+
+  unitMeshes.forEach(mesh => {
+    const unit = mesh.userData.unit;
+    let visible = true;
+    if (activeYear !== 999 && unit.year !== activeYear) visible = false;
+    if (activeGLO >= 0 && !unit.gloIds.includes(activeGLO)) visible = false;
+    if (hurdleHighlight && !unit.anyHurdle) visible = false;
+    if (formHighlight && !unit.formMissing) visible = false;
+
+    if (visible && activeGLO >= 0) {
+      const gloColor = new THREE.Color(GLO_COLORS[activeGLO]);
+      mesh.material.color.copy(gloColor); mesh.material.emissive.copy(gloColor);
+      mesh.material.emissiveIntensity = 0.3; mesh.material.opacity = 0.95;
+    } else if (visible && formHighlight && unit.formMissing) {
+      mesh.material.color.set('#ffb703'); mesh.material.emissive.set('#ffb703');
+      mesh.material.emissiveIntensity = 0.45; mesh.material.opacity = 0.95;
+    } else if (visible && hurdleHighlight && unit.anyHurdle) {
+      mesh.material.color.set('#e63946'); mesh.material.emissive.set('#e63946');
+      mesh.material.emissiveIntensity = 0.4; mesh.material.opacity = 0.95;
+    } else if (visible) {
+      mesh.material.color.copy(neutralColor); mesh.material.emissive.copy(neutralEmissive);
+      mesh.material.emissiveIntensity = 0.08; mesh.material.opacity = 0.85;
+    } else {
+      mesh.material.color.copy(neutralColor); mesh.material.emissive.copy(neutralEmissive);
+      mesh.material.emissiveIntensity = 0.0; mesh.material.opacity = 0.06;
+    }
+  });
+
+  cloMeshes.forEach(mesh => {
+    const g = mesh.userData.gloId;
+    mesh.material.opacity = (activeGLO >= 0 && g !== activeGLO) ? 0.1 : 0.85;
+    mesh.material.emissiveIntensity = (activeGLO >= 0 && g !== activeGLO) ? 0.02 : 0.2;
+  });
+  gloMeshes.forEach(mesh => {
+    const g = mesh.userData.gloId;
+    mesh.material.opacity = (activeGLO >= 0 && g !== activeGLO) ? 0.15 : 0.95;
+    mesh.material.emissiveIntensity = (activeGLO >= 0 && g !== activeGLO) ? 0.05 : 0.35;
+  });
+
+  spiralGroup.children.forEach(child => {
+    if (child.userData && child.userData.gloConnectionLine && child.userData.gloId !== undefined) {
+      let visible = true;
+      if (activeYear !== 999 && child.userData.unitYear !== undefined && child.userData.unitYear !== activeYear) visible = false;
+      if (activeGLO >= 0 && child.userData.gloId !== activeGLO) visible = false;
+      // When a GLO is highlighted, matching tubes pop; non-matching dim out.
+      // When nothing is highlighted, all visible tubes use the user's baseline opacity.
+      child.material.opacity = visible
+        ? (activeGLO >= 0 ? Math.max(0.55, lineBaseOpacity) : lineBaseOpacity)
+        : 0.02;
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// VIEW & TOP CONTROLS
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('view-nav').addEventListener('click', e => {
+  const btn = e.target.closest('.nav-btn'); if (!btn) return;
+  document.querySelectorAll('#view-nav .nav-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentView = btn.dataset.view;
+  transitionView();
+});
+
+document.getElementById('core-only-btn').addEventListener('click', () => {
+  coreOnly = !coreOnly;
+  document.getElementById('core-only-btn').classList.toggle('active', coreOnly);
+  buildModel();
+});
+
+document.getElementById('hurdle-btn').addEventListener('click', () => {
+  hurdleHighlight = !hurdleHighlight;
+  document.getElementById('hurdle-btn').classList.toggle('active', hurdleHighlight);
+  filterUnits();
+});
+
+document.getElementById('form-btn').addEventListener('click', () => {
+  formHighlight = !formHighlight;
+  document.getElementById('form-btn').classList.toggle('active', formHighlight);
+  filterUnits();
+});
+
+function transitionView() {
+  const visible = visibleUnits();
+  unitMeshes.forEach(mesh => {
+    const unit = mesh.userData.unit;
+    if (currentView === 'matrix') {
+      const unitsThisYear = visible.filter(u => u.year === unit.year);
+      const idx = unitsThisYear.findIndex(u => u.code === unit.code);
+      const x = (idx - (unitsThisYear.length - 1) / 2) * 2.2;
+      const yi = curriculum.years.indexOf(unit.year);
+      mesh.userData.targetPosition = new THREE.Vector3(x, yi * 3, 0);
+    } else {
+      mesh.userData.targetPosition = mesh.userData.basePosition.clone();
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RAYCASTING
+// ═══════════════════════════════════════════════════════════════
+function handleHover(e) {
+  const mouse = new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObjects([...unitMeshes, ...gloMeshes, ...cloMeshes]);
+  const tooltip = document.getElementById('tooltip');
+
+  if (intersects.length > 0) {
+    const mesh = intersects[0].object;
+    if (mesh !== hoveredMesh) { if (hoveredMesh) hoveredMesh.scale.setScalar(1); hoveredMesh = mesh; mesh.scale.setScalar(1.3); }
+    if (mesh.userData.isGLO) {
+      const g = mesh.userData.gloId;
+      tooltip.innerHTML = `<strong style="color:${GLO_COLORS[g]}">GLO ${g + 1}: ${GLO_NAMES[g]}</strong><br>Click to highlight`;
+    } else if (mesh.userData.isCLO) {
+      const clo = mesh.userData.cloData;
+      tooltip.innerHTML = `<strong style="color:${GLO_COLORS[clo.gloId]}">${clo.short}</strong><br>${clo.text}`;
+    } else {
+      const u = mesh.userData.unit;
+      const tierIcons = { aol: '◆ AOL', clo: '▣ CLO', developing: '○ Dev' };
+      const yLbl = yearLabel(u.year);
+      const triBit = u.trimester ? ` · ${u.trimester}` : '';   // legacy CSVs still carry trimester
+      tooltip.innerHTML = `<strong>${u.code}</strong><br>${yLbl}${triBit} · ${u.ats.length} AT${u.ats.length===1?'':'s'} · ${tierIcons[u.taskTier]}${u.anyHurdle?' · <span style="color:#e63946;">⚑ HURDLE</span>':''}${u.formMissing?' · <span style="color:#ffb703;">⚠ FORM</span>':''}`;
+    }
+    tooltip.style.left = (e.clientX + 15) + 'px'; tooltip.style.top = (e.clientY - 10) + 'px';
+    tooltip.classList.add('show');
+    document.getElementById('canvas-container').style.cursor = 'pointer';
+  } else {
+    if (hoveredMesh) { hoveredMesh.scale.setScalar(1); hoveredMesh = null; }
+    tooltip.classList.remove('show');
+    document.getElementById('canvas-container').style.cursor = 'grab';
+  }
+}
+
+function handleClick(e) {
+  const mouse = new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObjects([...unitMeshes, ...gloMeshes, ...cloMeshes]);
+  if (intersects.length > 0) {
+    const mesh = intersects[0].object;
+    if (mesh.userData.isGLO || mesh.userData.isCLO) highlightGLO(mesh.userData.gloId);
+    else showDetail(mesh.userData.unit);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ANIMATION
+// ═══════════════════════════════════════════════════════════════
+function animate() {
+  requestAnimationFrame(animate);
+  time += 0.01;
+  spherical.theta += (targetSpherical.theta - spherical.theta) * 0.08;
+  spherical.phi += (targetSpherical.phi - spherical.phi) * 0.08;
+  spherical.radius += (targetSpherical.radius - spherical.radius) * 0.08;
+  if (!isDragging) targetSpherical.theta += 0.001;
+  camera.position.x = spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+  camera.position.y = spherical.radius * Math.cos(spherical.phi) + 7;
+  camera.position.z = spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+  camera.lookAt(0, 7, 0);
+
+  unitMeshes.forEach((mesh, i) => {
+    const target = mesh.userData.targetPosition || mesh.userData.basePosition;
+    mesh.position.x += (target.x - mesh.position.x) * 0.05;
+    mesh.position.y = target.y + Math.sin(time + i * 0.5) * 0.05;
+    mesh.position.z += (target.z - mesh.position.z) * 0.05;
+    if (mesh.userData.unit.taskTier === 'aol') { mesh.rotation.y += 0.005; mesh.rotation.x += 0.002; }
+    else if (mesh.userData.unit.taskTier === 'clo') { mesh.rotation.y += 0.003; }
+  });
+  gloMeshes.forEach((mesh, i) => {
+    mesh.rotation.y += 0.008; mesh.rotation.x += 0.003;
+    mesh.position.y = mesh.userData.basePosition.y + Math.sin(time * 0.8 + i * 0.8) * 0.1;
+  });
+  cloMeshes.forEach((mesh, i) => {
+    mesh.rotation.y += 0.006;
+    mesh.position.y = mesh.userData.basePosition.y + Math.sin(time * 0.6 + i * 0.45) * 0.04;
+  });
+
+  // celebratory burst + sparkle animation
+  const now = performance.now();
+  const burstDuration = 1600;
+  const sparkleDuration = 1800;
+  const toRemove = [];
+  spiralGroup.children.forEach(child => {
+    if (child.userData && child.userData.isBurst) {
+      const dt = now - child.userData.t0;
+      const p = Math.min(dt / burstDuration, 1);
+      // Scale grows quickly, opacity fades after midpoint
+      const ease = 1 - Math.pow(1 - p, 3);
+      const s = 0.4 + (child.userData.maxScale - 0.4) * ease;
+      child.scale.set(s, s, 1);
+      child.material.opacity = p < 0.4 ? 1 : Math.max(0, 1 - (p - 0.4) / 0.6);
+      child.material.rotation = p * Math.PI * (child.userData.gold ? 1.5 : 0.8);
+      if (p >= 1) toRemove.push(child);
+    }
+    if (child.userData && child.userData.isSparkle) {
+      const dt = now - child.userData.t0;
+      const p = Math.min(dt / sparkleDuration, 1);
+      const o = child.userData.origin;
+      const t = dt / 1000;
+      child.position.set(
+        o.x + child.userData.vx * t,
+        o.y + child.userData.vy * t - 1.6 * t * t,   // gravity
+        o.z + child.userData.vz * t
+      );
+      const s = 0.18 + 0.25 * Math.sin(p * Math.PI);
+      child.scale.set(s, s, 1);
+      child.material.opacity = Math.max(0, 1 - p);
+      if (p >= 1) toRemove.push(child);
+    }
+  });
+  toRemove.forEach(c => spiralGroup.remove(c));
+
+  // pulsing hurdle rings + tracking flag/warning icons
+  spiralGroup.children.forEach(child => {
+    if (child.userData && child.userData.isHurdleRing) {
+      const pulse = 0.5 + 0.3 * Math.sin(time * 3);
+      child.material.opacity = pulse;
+      if (child.userData.parentMesh) child.position.copy(child.userData.parentMesh.position);
+      child.lookAt(camera.position);
+    }
+    if (child.userData && child.userData.isHurdleFlag && child.userData.parentMesh) {
+      const p = child.userData.parentMesh.position;
+      child.position.set(p.x, p.y + 0.55, p.z);
+    }
+    if (child.userData && child.userData.isFormFlag && child.userData.parentMesh) {
+      const p = child.userData.parentMesh.position;
+      const off = child.userData.parentMesh.userData.unit && child.userData.parentMesh.userData.unit.anyHurdle ? 0.95 : 0.55;
+      child.position.set(p.x, p.y + off, p.z);
+    }
+    if (child.userData && child.userData.isGLORing) child.lookAt(camera.position);
+  });
+
+  renderer.render(scene, camera);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODAL & FILE HANDLING
+// ═══════════════════════════════════════════════════════════════
+function showModal() { document.getElementById('modal').classList.add('show'); }
+function hideModal() { document.getElementById('modal').classList.remove('show'); }
+
+function showStatus(type, msg) {
+  const bar = document.getElementById('status-bar');
+  const dot = document.getElementById('status-dot');
+  const text = document.getElementById('status-text');
+  dot.style.background = type === 'success' ? 'var(--success)' : type === 'error' ? 'var(--hurdle)' : 'var(--accent)';
+  text.textContent = msg;
+  bar.classList.add('show');
+  setTimeout(() => bar.classList.remove('show'), 4000);
+}
+
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('dragover');
+  if (e.dataTransfer.files && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', e => { if (e.target.files.length) handleFiles(e.target.files); });
+
+// Read a single file → rows[]. .xlsx via SheetJS, .csv via PapaParse.
+// Returns a Promise resolving to { name, rows, role } where role is the sniffed identity.
+function readFileToRows(file) {
+  return new Promise((resolve, reject) => {
+    const name = file.name.toLowerCase();
+    const reader = new FileReader();
+    if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+      reader.onload = e => {
+        try {
+          const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+          // Prefer a sheet literally named 'export'; fall back to the first sheet.
+          const sheetName = wb.SheetNames.find(n => n.toLowerCase() === 'export') || wb.SheetNames[0];
+          const sheet = wb.Sheets[sheetName];
+          // defval:'' so missing cells become empty strings rather than undefined.
+          const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+          resolve({ file, rows, role: rows.length ? sniffRole(Object.keys(rows[0])) : 'unknown', sheetName });
+        } catch (err) { reject(err); }
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    } else if (name.endsWith('.csv')) {
+      reader.onload = e => {
+        const result = Papa.parse(String(e.target.result).trim(), { header: true, skipEmptyLines: true });
+        if (result.errors && result.errors.length) {
+          showStatus('error', `${file.name}: ${result.errors[0].message}`);
+        }
+        const rows = result.data || [];
+        resolve({ file, rows, role: rows.length ? sniffRole(Object.keys(rows[0])) : 'unknown' });
+      };
+      reader.onerror = reject;
+      reader.readAsText(file);
+    } else {
+      reject(new Error('Unsupported file type: ' + file.name));
+    }
+  });
+}
+
+function handleFiles(fileList) {
+  document.getElementById('file-roles').style.display = 'block';
+  const tasks = Array.from(fileList).map(f =>
+    readFileToRows(f)
+      .then(({ file, rows, role, sheetName }) => {
+        if (role === 'unknown') {
+          showStatus('error', `${file.name}: headers don't match any known schema`);
+          return;
+        }
+        loadedSources[role] = rows;
+        // If a legacy merged file is loaded, hide the row in the UI for it,
+        // and surface it as the active source (it bypasses CALM merge).
+        if (role === 'legacy_merged') {
+          const lr = document.querySelector('.role-row[data-role="legacy_merged"]');
+          if (lr) lr.style.display = 'flex';
+        }
+        markRoleLoaded(role, file.name + (sheetName ? ` · sheet "${sheetName}"` : ''), rows.length);
+      })
+      .catch(err => showStatus('error', `${fileList[0]?.name || 'file'}: ${err.message || err}`))
+  );
+
+  Promise.all(tasks).then(() => {
+    const ready = !!loadedSources.legacy_merged ||
+                  !!loadedSources.calm_pathways ||
+                  !!loadedSources.calm_tasks;
+    document.getElementById('apply-btn').disabled = !ready;
+    if (ready) {
+      dropZone.querySelector('.label').innerHTML = '<strong>Files loaded.</strong> Ready to apply, or drop more.';
+    }
+  });
+}
+
+function markRoleLoaded(role, filename, rowCount) {
+  const row = document.querySelector(`.role-row[data-role="${role}"]`);
+  if (!row) return;
+  row.classList.add('loaded');
+  const fileSpan = row.querySelector('.role-file');
+  if (fileSpan) fileSpan.textContent = `— ${filename} (${rowCount} rows)`;
+}
+
+function applyFiles() {
+  const data = buildCurriculumFromSources();
+  if (data && data.units && data.units.length > 0) {
+    curriculum = data;
+    buildPathwayDropdown(data.pathways);
+    buildModel();
+    hideModal();
+  } else {
+    showStatus('error', 'No valid unit rows found across loaded files');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+initScene();
+showModal();   // open immediately so the user can drop the CSV
+</script>
+</body>
+</html>

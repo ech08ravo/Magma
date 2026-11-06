@@ -1,0 +1,180 @@
+========================================
+VBA MACRO: Curriculum Data Merge Tool
+========================================
+
+INSTRUCTIONS:
+1. Open your Excel file with both sheets: "Courses by Units" and "Units by Assessment Tasks"
+2. Press Alt+F11 to open Visual Basic Editor
+3. Insert a new Module (Insert > Module)
+4. Copy the entire code below into the module
+5. Close the editor and save as .xlsm (Excel Macro-Enabled Workbook)
+6. Run: Tools > Macros > Run Macro > MergeCurriculumData
+7. Check your Documents folder for two CSV files
+
+========================================
+COPY THIS CODE INTO VBA MODULE:
+========================================
+
+Sub MergeCurriculumData()
+    Dim wsUnits As Worksheet, wsAssessment As Worksheet
+    Dim unitDict As Object, assessmentDict As Object
+    Dim outputAssessment As Object, outputCoverage As Object
+    Dim fso As Object, fileStream As Object
+    Dim docPath As String
+    Dim i As Long, j As Long, lastRow As Long
+    Dim unitCode As String, pathwayId As String
+    Dim assessmentRow As String, coverageRow As String
+
+    ' Create dictionaries
+    Set unitDict = CreateObject("Scripting.Dictionary")
+    Set assessmentDict = CreateObject("Scripting.Dictionary")
+    Set outputAssessment = CreateObject("Scripting.Dictionary")
+    Set outputCoverage = CreateObject("Scripting.Dictionary")
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    docPath = fso.GetSpecialFolder(4) ' 4 = Documents folder
+
+    On Error GoTo ErrorHandler
+
+    ' ===== SHEET 1: COURSES BY UNITS =====
+    ' Columns: A=Pathway, B=Level, C=Unit Code, D=Teaching Periods, E-L=GLO1-8
+
+    Set wsUnits = ThisWorkbook.Sheets("Courses by Units")
+    lastRow = wsUnits.Cells(wsUnits.Rows.Count, 1).End(xlUp).Row
+
+    For i = 2 To lastRow
+        pathwayId = CStr(wsUnits.Cells(i, 1).Value)
+        If pathwayId <> "" Then
+            unitCode = CStr(wsUnits.Cells(i, 3).Value)
+
+            ' Build coverage row: pathway_id,unit_level,unit_code,teaching_periods,glo1-8
+            coverageRow = pathwayId & "," & _
+                CStr(wsUnits.Cells(i, 2).Value) & "," & _
+                unitCode & "," & _
+                CStr(wsUnits.Cells(i, 4).Value)
+
+            ' Add GLO columns (E-L = columns 5-12)
+            For j = 5 To 12
+                coverageRow = coverageRow & "," & CStr(wsUnits.Cells(i, j).Value)
+            Next j
+
+            ' Store with key: pathway_id|unit_code
+            outputCoverage.Add pathwayId & "|" & unitCode, coverageRow
+        End If
+    Next i
+
+    ' ===== SHEET 2: UNITS BY ASSESSMENT TASKS =====
+    ' Columns: A=Unit Code, B=AT Number, C=AT Title, D=Student Output, E=AoL Type, F=Mode, G=Participation, H=Hurdle, I=Weighting, J-Q=GLO1-8
+
+    Set wsAssessment = ThisWorkbook.Sheets("Units by Assessment Tasks")
+    lastRow = wsAssessment.Cells(wsAssessment.Rows.Count, 1).End(xlUp).Row
+
+    For i = 2 To lastRow
+        unitCode = CStr(wsAssessment.Cells(i, 1).Value)
+        If unitCode <> "" Then
+            ' Build assessment row
+            assessmentRow = unitCode & "," & _
+                CStr(wsAssessment.Cells(i, 2).Value) & "," & _
+                QuoteCSV(CStr(wsAssessment.Cells(i, 3).Value)) & "," & _
+                QuoteCSV(CStr(wsAssessment.Cells(i, 4).Value)) & "," & _
+                QuoteCSV(CStr(wsAssessment.Cells(i, 5).Value)) & "," & _
+                QuoteCSV(CStr(wsAssessment.Cells(i, 6).Value)) & "," & _
+                QuoteCSV(CStr(wsAssessment.Cells(i, 7).Value)) & "," & _
+                CStr(wsAssessment.Cells(i, 8).Value) & "," & _
+                QuoteCSV(CStr(wsAssessment.Cells(i, 9).Value))
+
+            ' Add GLO columns (J-Q = columns 10-17)
+            For j = 10 To 17
+                assessmentRow = assessmentRow & "," & CStr(wsAssessment.Cells(i, j).Value)
+            Next j
+
+            ' Store by unit code (can have multiple tasks per unit)
+            If Not outputAssessment.Exists(unitCode) Then
+                outputAssessment.Add unitCode, assessmentRow
+            Else
+                outputAssessment(unitCode) = outputAssessment(unitCode) & vbCrLf & assessmentRow
+            End If
+        End If
+    Next i
+
+    ' ===== WRITE CSV FILES =====
+
+    ' File 1: Assessment Tasks
+    Dim assessmentFile As String
+    assessmentFile = docPath & "\curriculum-assessment-tasks-v1.csv"
+    Set fileStream = fso.CreateTextFile(assessmentFile, True)
+
+    fileStream.WriteLine "unit_code,at_number,at_title,student_output,aol_task_type,mode,participation,hurdle,weighting,glo1,glo2,glo3,glo4,glo5,glo6,glo7,glo8"
+
+    For Each unitCode In outputAssessment.Keys
+        fileStream.WriteLine outputAssessment(unitCode)
+    Next unitCode
+
+    fileStream.Close
+
+    ' File 2: Unit Coverage
+    Dim coverageFile As String
+    coverageFile = docPath & "\curriculum-unit-coverage-v1.csv"
+    Set fileStream = fso.CreateTextFile(coverageFile, True)
+
+    fileStream.WriteLine "pathway_id,unit_level,unit_code,teaching_periods,glo1,glo2,glo3,glo4,glo5,glo6,glo7,glo8"
+
+    For Each unitCode In outputCoverage.Keys
+        fileStream.WriteLine outputCoverage(unitCode)
+    Next unitCode
+
+    fileStream.Close
+
+    MsgBox "✓ Done! Two CSV files created:" & vbCrLf & _
+           assessmentFile & vbCrLf & _
+           coverageFile, vbInformation, "Success"
+
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Error: " & Err.Description & vbCrLf & vbCrLf & _
+           "Check sheet names match exactly: 'Courses by Units' and 'Units by Assessment Tasks'", vbCritical
+End Sub
+
+' Helper function to quote CSV fields with commas
+Function QuoteCSV(value As String) As String
+    If InStr(value, ",") > 0 Or InStr(value, """") > 0 Then
+        QuoteCSV = """" & Replace(value, """", """""") & """"
+    Else
+        QuoteCSV = value
+    End If
+End Function
+
+========================================
+END OF CODE
+========================================
+
+IMPORTANT NOTES:
+- Sheet names must match EXACTLY: "Courses by Units" and "Units by Assessment Tasks"
+- Column order must match the positions above (A, B, C, etc.)
+- The macro creates CSVs in your Documents folder
+- If columns are in different positions, change the column numbers in the code:
+  * wsUnits.Cells(i, 1) = Column A, Cells(i, 2) = Column B, etc.
+  * wsAssessment.Cells(i, 1) = Column A, Cells(i, 2) = Column B, etc.
+
+COLUMN MAPPING REFERENCE:
+Courses by Units:
+  A (col 1) = Student Pathway
+  B (col 2) = Unit Level of Study
+  C (col 3) = Unit Code
+  D (col 4) = 2026 Teaching Periods
+  E-L (col 5-12) = GLO1/CLO1 through GLO8/CLO8
+
+Units by Assessment Tasks:
+  A (col 1) = Unit Code
+  B (col 2) = AT Number
+  C (col 3) = AT Title
+  D (col 4) = Student Output
+  E (col 5) = AoL Task Type
+  F (col 6) = Mode
+  G (col 7) = Participation
+  H (col 8) = Hurdle
+  I (col 9) = Weighting Information
+  J-Q (col 10-17) = GLO1/CLO1 through GLO8/CLO8
+
+If your layout differs, adjust column numbers accordingly.

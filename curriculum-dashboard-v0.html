@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Curriculum Framework Dashboard — CSV-Driven</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;700&family=Instrument+Serif&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0b0f;
+    --panel: rgba(16, 18, 27, 0.92);
+    --border: rgba(255,255,255,0.06);
+    --text: #e8e6e1;
+    --text-dim: #8a8780;
+    --accent: #f4a261;
+    --success: #2a9d8f;
+    --glo1: #e76f51; --glo2: #f4a261; --glo3: #e9c46a; --glo4: #2a9d8f;
+    --glo5: #607d8b; --glo6: #a06cd5; --glo7: #6d9dc5; --glo8: #c77dba;
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; overflow: hidden; height: 100vh; }
+
+  #canvas-container { position: fixed; inset: 0; z-index: 1; }
+
+  .ui-layer { position: fixed; z-index: 10; pointer-events: none; }
+  .ui-layer > * { pointer-events: auto; }
+
+  /* Header */
+  .header {
+    top: 0; left: 0; right: 0;
+    padding: 20px 24px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+  }
+
+  .header h1 { font-family: 'Instrument Serif', serif; font-size: 26px; font-weight: 400; letter-spacing: -0.5px; }
+  .header .subtitle { font-size: 12px; color: var(--text-dim); margin-top: 3px; font-weight: 300; }
+
+  .controls-row { display: flex; gap: 8px; align-items: center; }
+
+  .nav-group {
+    display: flex; gap: 3px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 3px; backdrop-filter: blur(20px);
+  }
+
+  .nav-btn {
+    background: none; border: none; color: var(--text-dim);
+    font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500;
+    padding: 6px 12px; border-radius: 6px; cursor: pointer; transition: all 0.3s;
+  }
+  .nav-btn:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+  .nav-btn.active { color: var(--bg); background: var(--accent); }
+
+  .upload-btn {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 14px; backdrop-filter: blur(20px);
+    color: var(--accent); font-family: 'DM Sans', sans-serif; font-size: 12px;
+    font-weight: 500; cursor: pointer; transition: all 0.3s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .upload-btn:hover { background: rgba(244, 162, 97, 0.1); border-color: var(--accent); }
+
+  /* Side Panel */
+  .side-panel {
+    top: 80px; left: 16px; bottom: 16px; width: 240px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px; backdrop-filter: blur(20px);
+    overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent;
+  }
+
+  .side-panel h3 {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--text-dim); margin-bottom: 12px; font-weight: 500;
+  }
+
+  .glo-item {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 0; border-bottom: 1px solid var(--border);
+    cursor: pointer; transition: opacity 0.3s;
+  }
+  .glo-item:last-child { border-bottom: none; }
+  .glo-item:hover { opacity: 0.8; }
+  .glo-item.active { opacity: 1; }
+
+  .glo-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+  .glo-label { font-size: 12px; font-weight: 500; line-height: 1.4; }
+  .glo-sub { font-size: 10px; color: var(--text-dim); margin-top: 2px; font-weight: 300; }
+
+  /* Detail Panel */
+  .detail-panel {
+    top: 80px; right: 16px; bottom: 16px; width: 300px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; backdrop-filter: blur(20px);
+    overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent;
+    transform: translateX(330px); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .detail-panel.visible { transform: translateX(0); }
+
+  .detail-panel .close-btn {
+    position: absolute; top: 12px; right: 12px;
+    background: none; border: none; color: var(--text-dim);
+    font-size: 16px; cursor: pointer; width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 5px; transition: all 0.2s;
+  }
+  .detail-panel .close-btn:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+
+  .detail-title { font-family: 'Instrument Serif', serif; font-size: 20px; margin-bottom: 2px; }
+  .detail-year { font-size: 11px; color: var(--accent); font-weight: 500; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+
+  .detail-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .detail-section h4 { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-dim); margin-bottom: 8px; font-weight: 500; }
+
+  .lo-item { display: flex; align-items: flex-start; gap: 6px; padding: 4px 0; font-size: 12px; line-height: 1.4; }
+  .lo-dot { width: 5px; height: 5px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+
+  .task-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 5px; font-size: 10px; font-weight: 500; margin: 2px 2px 2px 0;
+  }
+  .task-aol { background: rgba(244, 162, 97, 0.15); color: var(--accent); border: 1px solid rgba(244, 162, 97, 0.3); }
+  .task-clo { background: rgba(42, 157, 143, 0.15); color: var(--success); border: 1px solid rgba(42, 157, 143, 0.3); }
+  .task-developing { background: rgba(255,255,255,0.05); color: var(--text-dim); border: 1px solid var(--border); }
+
+  .bloom-tag {
+    display: inline-block; padding: 1px 6px; border-radius: 3px;
+    font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  .bloom-0,.bloom-1 { background: rgba(42,157,143,0.2); color: #2a9d8f; }
+  .bloom-2,.bloom-3 { background: rgba(233,196,106,0.2); color: #e9c46a; }
+  .bloom-4,.bloom-5 { background: rgba(231,111,81,0.2); color: #e76f51; }
+
+  /* Bottom Bar */
+  .info-bar { bottom: 16px; left: 270px; right: 330px; display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
+  .info-chip {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 10px; font-size: 11px;
+    color: var(--text-dim); backdrop-filter: blur(20px);
+    display: flex; align-items: center; gap: 5px;
+  }
+  .info-chip strong { color: var(--text); font-weight: 500; }
+  .legend-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+  /* Upload Modal */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+    display: none; align-items: center; justify-content: center;
+  }
+  .modal-overlay.show { display: flex; }
+
+  .modal {
+    background: #14151f; border: 1px solid var(--border);
+    border-radius: 16px; padding: 32px; max-width: 560px; width: 90%;
+  }
+  .modal h2 { font-family: 'Instrument Serif', serif; font-size: 24px; margin-bottom: 8px; }
+  .modal p { font-size: 13px; color: var(--text-dim); line-height: 1.6; margin-bottom: 16px; }
+
+  .drop-zone {
+    border: 2px dashed rgba(244, 162, 97, 0.3); border-radius: 12px;
+    padding: 40px 24px; text-align: center; cursor: pointer;
+    transition: all 0.3s; margin-bottom: 16px;
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--accent); background: rgba(244, 162, 97, 0.05);
+  }
+  .drop-zone .icon { font-size: 32px; margin-bottom: 8px; }
+  .drop-zone .label { font-size: 13px; color: var(--text-dim); }
+  .drop-zone .label strong { color: var(--accent); }
+
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .btn-secondary {
+    background: none; border: 1px solid var(--border); color: var(--text-dim);
+    padding: 8px 16px; border-radius: 8px; font-family: 'DM Sans', sans-serif;
+    font-size: 13px; cursor: pointer; transition: all 0.3s;
+  }
+  .btn-secondary:hover { border-color: var(--text-dim); color: var(--text); }
+  .btn-primary {
+    background: var(--accent); border: none; color: var(--bg);
+    padding: 8px 20px; border-radius: 8px; font-family: 'DM Sans', sans-serif;
+    font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.3s;
+  }
+  .btn-primary:hover { filter: brightness(1.1); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .file-info { font-size: 12px; color: var(--success); margin-top: 8px; display: none; }
+
+  .csv-schema {
+    background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px; margin-bottom: 16px;
+    font-size: 11px; color: var(--text-dim); line-height: 1.6;
+    font-family: 'DM Mono', monospace; max-height: 120px; overflow-y: auto;
+  }
+
+  .status-bar {
+    position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
+    z-index: 50; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 16px; font-size: 12px;
+    backdrop-filter: blur(20px); display: none; align-items: center; gap: 8px;
+  }
+  .status-bar.show { display: flex; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  /* Tooltip */
+  #tooltip {
+    position: fixed; z-index: 100;
+    background: rgba(16, 18, 27, 0.95); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px; font-size: 11px; color: var(--text);
+    pointer-events: none; opacity: 0; transition: opacity 0.2s;
+    backdrop-filter: blur(10px); max-width: 300px;
+  }
+  #tooltip.show { opacity: 1; }
+
+  .download-link { color: var(--accent); text-decoration: none; font-size: 12px; }
+  .download-link:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div class="ui-layer header">
+  <div>
+    <h1 id="dashboard-title">Curriculum Framework Dashboard</h1>
+    <div class="subtitle" id="dashboard-subtitle">Upload a CSV to populate · <a href="#" class="download-link" id="download-template">Download template CSV</a></div>
+  </div>
+  <div class="controls-row">
+    <button class="upload-btn" onclick="showModal()">⬆ Upload CSV</button>
+    <div class="nav-group" id="view-nav">
+      <button class="nav-btn active" data-view="rings">Rings</button>
+      <button class="nav-btn" data-view="matrix">Matrix</button>
+    </div>
+    <div class="nav-group" id="year-nav">
+      <button class="nav-btn active" data-year="0">All</button>
+    </div>
+  </div>
+</div>
+
+<div class="ui-layer side-panel" id="glo-panel">
+  <h3>Deakin Graduate Learning Outcomes</h3>
+  <div id="glo-list"></div>
+</div>
+
+<div class="ui-layer detail-panel" id="detail-panel">
+  <button class="close-btn" onclick="closeDetail()">✕</button>
+  <div id="detail-content"></div>
+</div>
+
+<div class="ui-layer info-bar">
+  <div class="info-chip"><span class="legend-dot" style="background:#2a9d8f"></span> <strong>L1</strong> Remember / Understand</div>
+  <div class="info-chip"><span class="legend-dot" style="background:#e9c46a"></span> <strong>L2</strong> Apply / Analyse</div>
+  <div class="info-chip"><span class="legend-dot" style="background:#e76f51"></span> <strong>L3</strong> Evaluate / Create</div>
+  <div class="info-chip"><span class="legend-dot" style="background:var(--accent)"></span> <strong>◆</strong> AOL (Hurdle + ID)</div>
+  <div class="info-chip"><span class="legend-dot" style="background:var(--success)"></span> <strong>▣</strong> CLO (Evidence)</div>
+  <div class="info-chip"><span class="legend-dot" style="background:var(--text-dim)"></span> <strong>○</strong> Developing (Self-assess)</div>
+  <div class="info-chip">Drag to rotate · Scroll to zoom · Click to inspect</div>
+</div>
+
+<div class="status-bar" id="status-bar">
+  <span class="status-dot" id="status-dot"></span>
+  <span id="status-text"></span>
+</div>
+
+<div id="tooltip"></div>
+
+<!-- Upload Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2>Upload Curriculum CSV</h2>
+    <p>Upload a CSV file to populate the 3D curriculum model. The file should follow this schema:</p>
+    <div class="csv-schema">
+sheet, unit_code, unit_name, year, position, clo_mappings, glo_mappings, assessment_name, assessment_type, bloom_level
+units, SLE111, Cells and Genes, 1, 0, "CLO1,CLO6", "GLO1,GLO3", Lab Portfolio, aol, Understand
+&nbsp;
+assessment_type: aol | clo | developing
+    </div>
+    <div class="drop-zone" id="drop-zone">
+      <div class="icon">📄</div>
+      <div class="label">Drag & drop your CSV here, or <strong>click to browse</strong></div>
+    </div>
+    <div class="file-info" id="file-info">✓ File loaded</div>
+    <input type="file" id="file-input" accept=".csv" style="display:none">
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="hideModal()">Cancel</button>
+      <button class="btn-primary" id="apply-btn" onclick="applyCSV()" disabled>Apply to Model</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════════════
+const GLO_COLORS = ['#e76f51','#f4a261','#e9c46a','#2a9d8f','#607d8b','#a06cd5','#6d9dc5','#c77dba'];
+const GLO_NAMES = [
+  'Discipline-specific knowledge','Communication','Digital literacy','Critical thinking',
+  'Problem solving','Self-management','Teamwork','Global citizenship'
+];
+
+const CLO_DATA = [
+  { id: 0, gloId: 0, short: 'CLO 1', text: 'Apply broad and coherent knowledge of scientific disciplines within chosen major.' },
+  { id: 1, gloId: 0, short: 'CLO 2', text: 'Apply technical knowledge and skills in professional/academic settings within major area(s).' },
+  { id: 2, gloId: 0, short: 'CLO 3', text: 'Use hypotheses, laws, facts and theories to investigate, test, analyse and evaluate scientific data.' },
+  { id: 3, gloId: 1, short: 'CLO 4', text: 'Demonstrate listening and communication skills to articulate boundaries of scientific information.' },
+  { id: 4, gloId: 1, short: 'CLO 5', text: 'Present scientific procedures, observations, results and conclusions professionally.' },
+  { id: 5, gloId: 2, short: 'CLO 6', text: 'Independently locate, analyse, evaluate, synthesise and disseminate scientific literature and data.' },
+  { id: 6, gloId: 3, short: 'CLO 7', text: 'Locate and evaluate scientific information; use scientific methods to structure investigations.' },
+  { id: 7, gloId: 3, short: 'CLO 8', text: 'Use critical thinking to analyse, synthesise, formulate hypotheses and test against evidence.' },
+  { id: 8, gloId: 4, short: 'CLO 9', text: 'Use initiative and creativity to recognise, clarify, construct and solve problems.' },
+  { id: 9, gloId: 4, short: 'CLO 10', text: 'Advocate scientific methodologies to create solutions to authentic real-world problems.' },
+  { id: 10, gloId: 5, short: 'CLO 11', text: 'Take responsibility within changing science contexts; develop autonomy and evaluate own performance.' },
+  { id: 11, gloId: 5, short: 'CLO 12', text: 'Work autonomously and safely; apply regulatory frameworks and scientific methodologies.' },
+  { id: 12, gloId: 6, short: 'CLO 13', text: 'Work independently and collaboratively; demonstrate interpersonal skills and constructive feedback.' },
+  { id: 13, gloId: 7, short: 'CLO 14', text: 'Apply scientific knowledge with autonomy to articulate the importance of science globally.' }
+];
+
+const BLOOM_LEVELS = ['Remember','Understand','Apply','Analyse','Evaluate','Create'];
+const BLOOM_MAP = {}; BLOOM_LEVELS.forEach((b, i) => BLOOM_MAP[b.toLowerCase()] = i);
+
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+let parsedCSV = null;
+let curriculum = { units: [], years: new Set() };
+let activeYear = 0;
+let activeGLO = -1;
+let currentView = 'rings';
+
+// Three.js globals
+let scene, camera, renderer, spiralGroup;
+let unitMeshes = [], gloMeshes = [], cloMeshes = [];
+let isDragging = false, previousMouse = { x: 0, y: 0 };
+let spherical = { theta: 0.8, phi: 1.0, radius: 24 };
+let targetSpherical = { ...spherical };
+let hoveredMesh = null;
+let time = 0;
+
+const baseRadius = 6;
+const heightPerYear = 3.5;
+
+// ═══════════════════════════════════════════════════════════════
+// CSV TEMPLATE (embedded for download)
+// ═══════════════════════════════════════════════════════════════
+const TEMPLATE_CSV = `sheet,unit_code,unit_name,year,position,clo_mappings,glo_mappings,assessment_name,assessment_type,bloom_level
+units,SLE111,Cells and Genes,1,0,"CLO1,CLO6,CLO7","GLO1,GLO3,GLO4",Lab Portfolio,clo,Understand
+units,SLE103,Ecology and the Environment,1,1,"CLO1,CLO14","GLO1,GLO8",Field Report,aol,Remember
+units,SLE115,Essential Skills in Science,1,2,"CLO4,CLO6,CLO11","GLO2,GLO3,GLO6",Skills Portfolio,developing,Remember
+units,SLE123,Physics for the Life Sciences,1,3,"CLO1,CLO9","GLO1,GLO5",Problem Set,developing,Understand
+units,SIT191,Intro to Statistics and Data Analysis,1,4,"CLO6,CLO8","GLO3,GLO4",Data Analysis Report,clo,Understand
+units,SLE133,Chemistry in Our World,1,5,"CLO1,CLO3","GLO1,GLO1",Lab Report,aol,Remember
+units,SLE132,Biology: Form and Function,1,6,"CLO1,CLO7,CLO13","GLO1,GLO4,GLO7",Group Project,developing,Understand
+units,ELECTIVE1,Elective 1,1,7,"CLO5,CLO11","GLO2,GLO6",Reflective Journal,developing,Remember
+units,SLE209,Science and Society,2,0,"CLO5,CLO10,CLO14","GLO2,GLO5,GLO8",Essay,aol,Apply
+units,SLE200,Communicating Science Ideas,2,1,"CLO4,CLO5","GLO2,GLO2",Presentation,aol,Apply
+units,SLE254,Genetics and Genomics,2,2,"CLO2,CLO3,CLO8","GLO1,GLO1,GLO4",Research Report,aol,Analyse
+units,SLE212,Biochemistry,2,3,"CLO1,CLO2,CLO6","GLO1,GLO1,GLO3",Lab Practical Exam,clo,Apply
+units,SLE211,Principles of Physiology,2,4,"CLO2,CLO3,CLO9","GLO1,GLO1,GLO5",Case Study,clo,Analyse
+units,SLE251,Research Methods and Data Analysis,2,5,"CLO6,CLO7,CLO8","GLO3,GLO4,GLO4",Methods Report,clo,Apply
+units,MAJOR_L2A,Major Unit Level 2A,2,6,"CLO2,CLO12,CLO13","GLO1,GLO6,GLO7",Team Lab Report,aol,Apply
+units,ELECTIVE2,Elective 2,2,7,"CLO11,CLO14","GLO6,GLO8",Peer Review Exercise,developing,Apply
+units,SLE352,Community Science Project,3,0,"CLO10,CLO13,CLO14","GLO5,GLO7,GLO8",Community Report,aol,Evaluate
+units,MAJOR_L3A,Major Unit Level 3A,3,1,"CLO2,CLO3,CLO8","GLO1,GLO1,GLO4",Research Project,aol,Evaluate
+units,MAJOR_L3B,Major Unit Level 3B,3,2,"CLO2,CLO3,CLO9","GLO1,GLO1,GLO5",Capstone Experiment,aol,Create
+units,MAJOR_L3C,Major Unit Level 3C,3,3,"CLO1,CLO7,CLO12","GLO1,GLO4,GLO6",Independent Study,clo,Create
+units,MAJOR_L3D,Major Unit Level 3D,3,4,"CLO2,CLO6,CLO10","GLO1,GLO3,GLO5",Innovation Proposal,aol,Evaluate
+units,SLE370,Evolution,3,5,"CLO1,CLO3,CLO8","GLO1,GLO1,GLO4",Critical Essay,clo,Evaluate
+units,ELECTIVE3,Elective 3,3,6,"CLO4,CLO11,CLO13","GLO2,GLO6,GLO7",Collaborative Project,developing,Evaluate
+units,ELECTIVE4,Elective 4,3,7,"CLO5,CLO12,CLO14","GLO2,GLO6,GLO8",Reflective Portfolio,developing,Create`;
+
+// ═══════════════════════════════════════════════════════════════
+// CSV PARSING
+// ═══════════════════════════════════════════════════════════════
+function parseCSVData(csvText) {
+  const result = Papa.parse(csvText.trim(), { header: true, skipEmptyLines: true });
+  if (result.errors.length > 0) {
+    showStatus('error', `CSV parse error: ${result.errors[0].message}`);
+    return null;
+  }
+
+  const units = [];
+  const years = new Set();
+
+  result.data.forEach((row, idx) => {
+    if (row.sheet !== 'units') return;
+
+    const year = parseInt(row.year);
+    const position = parseInt(row.position);
+    if (isNaN(year) || isNaN(position)) return;
+
+    years.add(year);
+
+    // Parse CLO mappings
+    const cloRaw = (row.clo_mappings || '').replace(/"/g, '').split(',').map(s => s.trim()).filter(Boolean);
+    const cloIds = cloRaw.map(c => parseInt(c.replace(/\D/g, '')) - 1).filter(n => !isNaN(n) && n >= 0 && n < 14);
+
+    // Parse GLO mappings (derive unique from CLO if possible, else parse directly)
+    const gloRaw = (row.glo_mappings || '').replace(/"/g, '').split(',').map(s => s.trim()).filter(Boolean);
+    const gloIds = [...new Set(gloRaw.map(g => parseInt(g.replace(/\D/g, '')) - 1).filter(n => !isNaN(n) && n >= 0 && n < 8))];
+
+    const bloomStr = (row.bloom_level || 'remember').toLowerCase();
+    const bloomLevel = BLOOM_MAP[bloomStr] !== undefined ? BLOOM_MAP[bloomStr] : 0;
+
+    const assessType = (row.assessment_type || 'developing').toLowerCase().trim();
+    const taskTier = assessType === 'aol' ? 'aol' : assessType === 'clo' ? 'clo' : 'developing';
+
+    units.push({
+      id: idx,
+      code: row.unit_code || `U${idx + 1}`,
+      name: row.unit_name || `Unit ${idx + 1}`,
+      year: year,
+      position: position,
+      cloIds: cloIds,
+      gloIds: gloIds,
+      assessmentName: row.assessment_name || '',
+      assessmentType: taskTier,
+      taskTier: taskTier,
+      bloomLevel: bloomLevel
+    });
+  });
+
+  return { units, years: [...years].sort((a, b) => a - b) };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// THREE.JS SCENE SETUP
+// ═══════════════════════════════════════════════════════════════
+function initScene() {
+  const container = document.getElementById('canvas-container');
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(0x0a0b0f, 1);
+  container.appendChild(renderer.domElement);
+
+  camera.position.set(12, 10, 16);
+  camera.lookAt(0, 3, 0);
+
+  // Lights
+  scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+  dirLight.position.set(10, 20, 10);
+  scene.add(dirLight);
+  const pointLight = new THREE.PointLight(0xf4a261, 0.4, 30);
+  pointLight.position.set(0, 10, 0);
+  scene.add(pointLight);
+
+  // Grid
+  const grid = new THREE.GridHelper(30, 30, 0x1a1b2e, 0x12131f);
+  grid.position.y = -0.5;
+  scene.add(grid);
+
+  spiralGroup = new THREE.Group();
+  scene.add(spiralGroup);
+
+  // Controls
+  container.addEventListener('mousedown', e => { if (e.button === 0) { isDragging = true; previousMouse = { x: e.clientX, y: e.clientY }; } });
+  container.addEventListener('mousemove', e => {
+    if (isDragging) {
+      targetSpherical.theta -= (e.clientX - previousMouse.x) * 0.005;
+      targetSpherical.phi = Math.max(0.2, Math.min(Math.PI - 0.2, targetSpherical.phi - (e.clientY - previousMouse.y) * 0.005));
+      previousMouse = { x: e.clientX, y: e.clientY };
+    }
+    handleHover(e);
+  });
+  container.addEventListener('mouseup', () => isDragging = false);
+  container.addEventListener('mouseleave', () => isDragging = false);
+  container.addEventListener('wheel', e => { targetSpherical.radius = Math.max(8, Math.min(40, targetSpherical.radius + e.deltaY * 0.02)); });
+  container.addEventListener('click', handleClick);
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  animate();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BUILD 3D MODEL FROM DATA
+// ═══════════════════════════════════════════════════════════════
+function buildModel(data) {
+  // Clear existing
+  while (spiralGroup.children.length > 0) spiralGroup.remove(spiralGroup.children[0]);
+  // Also clear scene-level items we added (bands, labels)
+  const toRemove = [];
+  scene.children.forEach(c => { if (c.userData && c.userData.dynamic) toRemove.push(c); });
+  toRemove.forEach(c => scene.remove(c));
+
+  unitMeshes = []; gloMeshes = []; cloMeshes = [];
+
+  const numYears = data.years.length;
+  const maxUnitsPerYear = Math.max(...data.years.map(y => data.units.filter(u => u.year === y).length));
+
+  // Central axis
+  const axisMat = new THREE.MeshPhongMaterial({ color: 0x2a2b3e, transparent: true, opacity: 0.4 });
+  const axisGeo = new THREE.CylinderGeometry(0.08, 0.08, numYears * heightPerYear + 5, 16);
+  const axis = new THREE.Mesh(axisGeo, axisMat);
+  axis.position.y = (numYears * heightPerYear + 5) / 2 - 0.5;
+  axis.userData = { dynamic: true };
+  scene.add(axis);
+
+  // Level bands & year labels
+  const LEVEL_COLORS = [0x2a9d8f, 0xe9c46a, 0xe76f51, 0xa06cd5, 0x6d9dc5];
+  const LEVEL_LABELS = ['Remember / Understand','Apply / Analyse','Evaluate / Create','Synthesise','Integrate'];
+
+  data.years.forEach((yr, yi) => {
+    const bandY = yi * heightPerYear + heightPerYear * 0.4;
+
+    // Band disc
+    const bandGeo = new THREE.CylinderGeometry(baseRadius + 1.5, baseRadius + 1.5, 0.02, 48);
+    const bandMat = new THREE.MeshBasicMaterial({ color: LEVEL_COLORS[yi % LEVEL_COLORS.length], transparent: true, opacity: 0.04, side: THREE.DoubleSide });
+    const band = new THREE.Mesh(bandGeo, bandMat);
+    band.position.y = bandY;
+    band.userData = { dynamic: true };
+    scene.add(band);
+
+    // Ring outline
+    const ringGeo = new THREE.RingGeometry(baseRadius + 1.3, baseRadius + 1.5, 64);
+    const ringMat = new THREE.MeshBasicMaterial({ color: LEVEL_COLORS[yi % LEVEL_COLORS.length], transparent: true, opacity: 0.1, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI / 2; ring.position.y = bandY;
+    ring.userData = { dynamic: true };
+    scene.add(ring);
+
+    // Year label
+    const yCanvas = document.createElement('canvas');
+    yCanvas.width = 128; yCanvas.height = 64;
+    const yCtx = yCanvas.getContext('2d');
+    yCtx.fillStyle = '#f4a261'; yCtx.font = 'bold 36px DM Sans, sans-serif'; yCtx.textAlign = 'center';
+    yCtx.fillText(`Y${yr}`, 64, 42);
+    const yTex = new THREE.CanvasTexture(yCanvas);
+    const ySprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: yTex, transparent: true }));
+    ySprite.scale.set(1.2, 0.6, 1); ySprite.position.set(-0.8, yi * heightPerYear + 0.8, 0);
+    ySprite.userData = { dynamic: true };
+    scene.add(ySprite);
+
+    // Level label
+    const lvlCanvas = document.createElement('canvas');
+    lvlCanvas.width = 320; lvlCanvas.height = 64;
+    const lvlCtx = lvlCanvas.getContext('2d');
+    const hex = '#' + (LEVEL_COLORS[yi % LEVEL_COLORS.length]).toString(16).padStart(6, '0');
+    lvlCtx.fillStyle = hex; lvlCtx.globalAlpha = 0.7;
+    lvlCtx.font = '22px DM Sans, sans-serif'; lvlCtx.textAlign = 'left';
+    lvlCtx.fillText(`Level ${yi + 1}: ${LEVEL_LABELS[yi % LEVEL_LABELS.length]}`, 10, 38);
+    const lvlTex = new THREE.CanvasTexture(lvlCanvas);
+    const lvlSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: lvlTex, transparent: true }));
+    lvlSprite.scale.set(3.5, 0.7, 1); lvlSprite.position.set(baseRadius + 2.5, bandY, 0);
+    lvlSprite.userData = { dynamic: true };
+    scene.add(lvlSprite);
+  });
+
+  // ── UNIT NODES ──
+  data.units.forEach((unit, i) => {
+    const yi = data.years.indexOf(unit.year);
+    const unitsThisYear = data.units.filter(u => u.year === unit.year);
+    const totalInYear = unitsThisYear.length;
+    const angle = (unit.position / totalInYear) * Math.PI * 2;
+    const height = yi * heightPerYear + heightPerYear * 0.4;
+    // Node shape and size by assessment tier
+    // AOL: large faceted (icosahedron) — most prominent
+    // CLO: medium box — evidence-generating
+    // Developing: small sphere — self-assessment
+    const nodeSize = unit.taskTier === 'aol' ? 0.38 : unit.taskTier === 'clo' ? 0.30 : 0.22;
+
+    let geo;
+    if (unit.taskTier === 'aol') geo = new THREE.IcosahedronGeometry(nodeSize, 1);
+    else if (unit.taskTier === 'clo') geo = new THREE.BoxGeometry(nodeSize * 1.4, nodeSize * 1.4, nodeSize * 1.4);
+    else geo = new THREE.SphereGeometry(nodeSize, 12, 12);
+    const mat = new THREE.MeshPhongMaterial({ color: 0xc8c4bd, emissive: 0x887f73, emissiveIntensity: 0.08, shininess: 60, transparent: true, opacity: 0.85 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(Math.cos(angle) * baseRadius, height, Math.sin(angle) * baseRadius);
+    mesh.userData = { unit: unit, basePosition: mesh.position.clone(), targetPosition: mesh.position.clone() };
+    spiralGroup.add(mesh);
+    unitMeshes.push(mesh);
+
+    // Unit label
+    const lblCanvas = document.createElement('canvas');
+    lblCanvas.width = 192; lblCanvas.height = 48;
+    const lblCtx = lblCanvas.getContext('2d');
+    lblCtx.fillStyle = '#9a968f'; lblCtx.font = '18px DM Sans, sans-serif'; lblCtx.textAlign = 'center';
+    lblCtx.fillText(unit.code, 96, 30);
+    const lblTex = new THREE.CanvasTexture(lblCanvas);
+    const lblSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: lblTex, transparent: true }));
+    lblSprite.scale.set(1.1, 0.3, 1);
+    lblSprite.position.set(Math.cos(angle) * (baseRadius + 0.7), height, Math.sin(angle) * (baseRadius + 0.7));
+    spiralGroup.add(lblSprite);
+
+    // Unit → CLO connection lines
+    const LINE_LEVEL_COLORS = [0x2a9d8f, 0xe9c46a, 0xe76f51, 0xa06cd5, 0x6d9dc5];
+    unit.cloIds.forEach(cloId => {
+      if (cloId >= CLO_DATA.length) return;
+      const cloAngle = (cloId / CLO_DATA.length) * Math.PI * 2;
+      const cloH = numYears * heightPerYear - 0.5;
+      const cloR = baseRadius - 1.2;
+      const cloPos = new THREE.Vector3(Math.cos(cloAngle) * cloR, cloH, Math.sin(cloAngle) * cloR);
+      const mid = mesh.position.clone().lerp(cloPos, 0.5);
+
+      const lineGeo = new THREE.BufferGeometry();
+      lineGeo.setFromPoints([mesh.position.clone(), mid, cloPos]);
+      const levelCol = new THREE.Color(LINE_LEVEL_COLORS[yi % LINE_LEVEL_COLORS.length]);
+      const cloCol = new THREE.Color(GLO_COLORS[CLO_DATA[cloId].gloId]);
+      const colors = new Float32Array([
+        levelCol.r, levelCol.g, levelCol.b,
+        (levelCol.r + cloCol.r) / 2, (levelCol.g + cloCol.g) / 2, (levelCol.b + cloCol.b) / 2,
+        cloCol.r, cloCol.g, cloCol.b
+      ]);
+      lineGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      const lineMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.06 });
+      const line = new THREE.Line(lineGeo, lineMat);
+      line.userData = { gloConnectionLine: true, gloId: CLO_DATA[cloId].gloId, unitYear: unit.year };
+      spiralGroup.add(line);
+    });
+  });
+
+  // ── CLO RING ──
+  const cloHeight = numYears * heightPerYear - 0.5;
+  const cloRadius = baseRadius - 1.2;
+
+  CLO_DATA.forEach((clo, i) => {
+    const angle = (i / CLO_DATA.length) * Math.PI * 2;
+    const parentColor = new THREE.Color(GLO_COLORS[clo.gloId]);
+    const geo = new THREE.OctahedronGeometry(0.28, 0);
+    const mat = new THREE.MeshPhongMaterial({ color: parentColor, emissive: parentColor, emissiveIntensity: 0.2, shininess: 100, transparent: true, opacity: 0.85 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(Math.cos(angle) * cloRadius, cloHeight, Math.sin(angle) * cloRadius);
+    mesh.userData = { isCLO: true, cloId: clo.id, gloId: clo.gloId, cloData: clo, basePosition: mesh.position.clone() };
+    spiralGroup.add(mesh);
+    cloMeshes.push(mesh);
+
+    // CLO label
+    const cCanvas = document.createElement('canvas');
+    cCanvas.width = 192; cCanvas.height = 48;
+    const cCtx = cCanvas.getContext('2d');
+    cCtx.fillStyle = GLO_COLORS[clo.gloId]; cCtx.font = 'bold 22px DM Sans, sans-serif'; cCtx.textAlign = 'center';
+    cCtx.fillText(clo.short, 96, 32);
+    const cTex = new THREE.CanvasTexture(cCanvas);
+    const cSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: cTex, transparent: true }));
+    cSprite.scale.set(1.2, 0.35, 1);
+    cSprite.position.set(Math.cos(angle) * (cloRadius + 0.55), cloHeight, Math.sin(angle) * (cloRadius + 0.55));
+    spiralGroup.add(cSprite);
+  });
+
+  // CLO ring label
+  const cloLblCanvas = document.createElement('canvas');
+  cloLblCanvas.width = 420; cloLblCanvas.height = 64;
+  const cloLblCtx = cloLblCanvas.getContext('2d');
+  cloLblCtx.fillStyle = '#c8c4bd'; cloLblCtx.globalAlpha = 0.6;
+  cloLblCtx.font = '20px DM Sans, sans-serif'; cloLblCtx.textAlign = 'left';
+  cloLblCtx.fillText('Course Learning Outcomes (B.Sc.)', 10, 38);
+  const cloLblTex = new THREE.CanvasTexture(cloLblCanvas);
+  const cloLblSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloLblTex, transparent: true }));
+  cloLblSprite.scale.set(4.5, 0.7, 1); cloLblSprite.position.set(baseRadius + 2, cloHeight, 0);
+  cloLblSprite.userData = { dynamic: true };
+  scene.add(cloLblSprite);
+
+  // ── GLO NODES ──
+  const gloTopHeight = numYears * heightPerYear + 2;
+  const gloRadius = 4.5;
+
+  for (let g = 0; g < 8; g++) {
+    const angle = (g / 8) * Math.PI * 2;
+    const gloColor = new THREE.Color(GLO_COLORS[g]);
+    const geo = new THREE.OctahedronGeometry(0.5, 1);
+    const mat = new THREE.MeshPhongMaterial({ color: gloColor, emissive: gloColor, emissiveIntensity: 0.35, shininess: 120, transparent: true, opacity: 0.95 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(Math.cos(angle) * gloRadius, gloTopHeight, Math.sin(angle) * gloRadius);
+    mesh.userData = { isGLO: true, gloId: g, basePosition: mesh.position.clone() };
+    spiralGroup.add(mesh);
+    gloMeshes.push(mesh);
+
+    // GLO label
+    const gCanvas = document.createElement('canvas');
+    gCanvas.width = 256; gCanvas.height = 80;
+    const gCtx = gCanvas.getContext('2d');
+    gCtx.fillStyle = GLO_COLORS[g]; gCtx.font = 'bold 28px DM Sans, sans-serif'; gCtx.textAlign = 'center';
+    gCtx.fillText(`GLO ${g + 1}`, 128, 35);
+    gCtx.font = '16px DM Sans, sans-serif'; gCtx.fillStyle = '#c8c4bd';
+    gCtx.fillText(GLO_NAMES[g].substring(0, 24), 128, 60);
+    const gTex = new THREE.CanvasTexture(gCanvas);
+    const gSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: gTex, transparent: true }));
+    gSprite.scale.set(2.4, 0.75, 1);
+    gSprite.position.set(Math.cos(angle) * gloRadius, gloTopHeight + 0.8, Math.sin(angle) * gloRadius);
+    spiralGroup.add(gSprite);
+
+    // Glow ring
+    const rGeo = new THREE.RingGeometry(0.6, 0.72, 32);
+    const rMat = new THREE.MeshBasicMaterial({ color: gloColor, transparent: true, opacity: 0.2, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(rGeo, rMat);
+    ring.position.copy(mesh.position); ring.lookAt(camera.position);
+    ring.userData = { isGLORing: true, gloId: g };
+    spiralGroup.add(ring);
+  }
+
+  // CLO → GLO connections
+  CLO_DATA.forEach((clo, i) => {
+    const cloMesh = cloMeshes[i];
+    const gloAngle = (clo.gloId / 8) * Math.PI * 2;
+    const gloPos = new THREE.Vector3(Math.cos(gloAngle) * gloRadius, gloTopHeight, Math.sin(gloAngle) * gloRadius);
+    const mid = cloMesh.position.clone().lerp(gloPos, 0.5);
+    const lineGeo = new THREE.BufferGeometry();
+    lineGeo.setFromPoints([cloMesh.position.clone(), mid, gloPos]);
+    const cloCol = new THREE.Color(GLO_COLORS[clo.gloId]);
+    const colors = new Float32Array([cloCol.r, cloCol.g, cloCol.b, cloCol.r * 0.8, cloCol.g * 0.8, cloCol.b * 0.8, cloCol.r, cloCol.g, cloCol.b]);
+    lineGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const lineMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.12 });
+    const line = new THREE.Line(lineGeo, lineMat);
+    line.userData = { cloToGloLine: true, gloId: clo.gloId, cloId: clo.id };
+    spiralGroup.add(line);
+  });
+
+  // Update UI
+  buildYearNav(data.years);
+  buildGLOList(data);
+  document.getElementById('dashboard-subtitle').innerHTML = `Bachelor of Science · ${numYears}-Year Programme · ${data.units.length} Units · 14 CLOs · 8 GLOs`;
+  showStatus('success', `Loaded ${data.units.length} units across ${numYears} years`);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UI COMPONENTS
+// ═══════════════════════════════════════════════════════════════
+function buildYearNav(years) {
+  const nav = document.getElementById('year-nav');
+  nav.innerHTML = '<button class="nav-btn active" data-year="0">All</button>';
+  years.forEach(y => { nav.innerHTML += `<button class="nav-btn" data-year="${y}">Y${y}</button>`; });
+  nav.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      nav.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeYear = parseInt(btn.dataset.year);
+      filterUnits();
+    });
+  });
+}
+
+function buildGLOList(data) {
+  const list = document.getElementById('glo-list');
+  list.innerHTML = GLO_NAMES.map((name, i) => {
+    const unitCount = data.units.filter(u => u.gloIds.includes(i)).length;
+    const cloCount = CLO_DATA.filter(c => c.gloId === i).length;
+    const aolCount = data.units.filter(u => u.gloIds.includes(i) && u.taskTier === 'aol').length;
+    return `<div class="glo-item" onclick="highlightGLO(${i})">
+      <span class="glo-dot" style="background:${GLO_COLORS[i]}"></span>
+      <div><div class="glo-label">GLO${i + 1}: ${name}</div>
+      <div class="glo-sub">${cloCount} CLOs · ${unitCount} units · ${aolCount} AOL</div></div>
+    </div>`;
+  }).join('');
+}
+
+function showDetail(unit) {
+  const panel = document.getElementById('detail-panel');
+  const content = document.getElementById('detail-content');
+
+  const cloHtml = unit.cloIds.map(cId => {
+    if (cId >= CLO_DATA.length) return '';
+    const clo = CLO_DATA[cId];
+    return `<div class="lo-item"><span class="lo-dot" style="background:${GLO_COLORS[clo.gloId]}"></span>
+      <div><strong>${clo.short}</strong>: ${clo.text}<br>→ <span style="color:${GLO_COLORS[clo.gloId]}; font-size:10px; font-weight:500;">GLO${clo.gloId + 1}: ${GLO_NAMES[clo.gloId]}</span></div></div>`;
+  }).join('');
+
+  const tierConfig = {
+    aol: { class: 'task-aol', icon: '◆', label: 'AOL — Hurdle + ID' },
+    clo: { class: 'task-clo', icon: '▣', label: 'CLO — Evidence' },
+    developing: { class: 'task-developing', icon: '○', label: 'Developing — Self-assess' }
+  };
+  const tier = tierConfig[unit.taskTier] || tierConfig.developing;
+
+  content.innerHTML = `
+    <div class="detail-title">${unit.name}</div>
+    <div class="detail-year">${unit.code} · Year ${unit.year}</div>
+    <div class="detail-section"><h4>CLO Mappings</h4>${cloHtml}</div>
+    <div class="detail-section"><h4>Assessment</h4>
+      <div class="task-badge ${tier.class}">${tier.icon} ${unit.assessmentName}
+        <span class="bloom-tag bloom-${unit.bloomLevel}">${BLOOM_LEVELS[unit.bloomLevel]}</span>
+      </div>
+      <div style="font-size:10px; color:var(--text-dim); margin-top:6px;">${tier.label}</div>
+    </div>
+    <div class="detail-section"><h4>Mapped GLOs (${unit.gloIds.length})</h4>
+      ${unit.gloIds.map(g => `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;">
+        <span class="glo-dot" style="background:${GLO_COLORS[g]}"></span>
+        <span style="font-size:12px;">GLO${g + 1}: ${GLO_NAMES[g]}</span></div>`).join('')}
+    </div>`;
+  panel.classList.add('visible');
+}
+
+function closeDetail() { document.getElementById('detail-panel').classList.remove('visible'); }
+
+// ═══════════════════════════════════════════════════════════════
+// FILTERING & HIGHLIGHTING
+// ═══════════════════════════════════════════════════════════════
+function highlightGLO(gloId) {
+  activeGLO = activeGLO === gloId ? -1 : gloId;
+  filterUnits();
+}
+
+function filterUnits() {
+  const neutralColor = new THREE.Color('#c8c4bd');
+  const neutralEmissive = new THREE.Color('#887f73');
+
+  unitMeshes.forEach(mesh => {
+    const unit = mesh.userData.unit;
+    let visible = true;
+    if (activeYear > 0 && unit.year !== activeYear) visible = false;
+    if (activeGLO >= 0 && !unit.gloIds.includes(activeGLO)) visible = false;
+
+    if (visible && activeGLO >= 0) {
+      const gloColor = new THREE.Color(GLO_COLORS[activeGLO]);
+      mesh.material.color.copy(gloColor); mesh.material.emissive.copy(gloColor);
+      mesh.material.emissiveIntensity = 0.3; mesh.material.opacity = 0.95;
+    } else if (visible) {
+      mesh.material.color.copy(neutralColor); mesh.material.emissive.copy(neutralEmissive);
+      mesh.material.emissiveIntensity = 0.08; mesh.material.opacity = 0.85;
+    } else {
+      mesh.material.color.copy(neutralColor); mesh.material.emissive.copy(neutralEmissive);
+      mesh.material.emissiveIntensity = 0.0; mesh.material.opacity = 0.06;
+    }
+  });
+
+  cloMeshes.forEach(mesh => {
+    const g = mesh.userData.gloId;
+    mesh.material.opacity = (activeGLO >= 0 && g !== activeGLO) ? 0.1 : 0.85;
+    mesh.material.emissiveIntensity = (activeGLO >= 0 && g !== activeGLO) ? 0.02 : 0.2;
+  });
+
+  gloMeshes.forEach(mesh => {
+    const g = mesh.userData.gloId;
+    mesh.material.opacity = (activeGLO >= 0 && g !== activeGLO) ? 0.15 : 0.95;
+    mesh.material.emissiveIntensity = (activeGLO >= 0 && g !== activeGLO) ? 0.05 : 0.35;
+  });
+
+  spiralGroup.children.forEach(child => {
+    if (child.isLine && child.userData.gloId !== undefined) {
+      let visible = true;
+      if (activeYear > 0 && child.userData.unitYear && child.userData.unitYear !== activeYear) visible = false;
+      if (activeGLO >= 0 && child.userData.gloId !== activeGLO) visible = false;
+      child.material.opacity = visible ? (activeGLO >= 0 ? 0.25 : 0.06) : 0.01;
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// VIEW MODES
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('view-nav').addEventListener('click', e => {
+  const btn = e.target.closest('.nav-btn');
+  if (!btn) return;
+  document.querySelectorAll('#view-nav .nav-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentView = btn.dataset.view;
+  transitionView();
+});
+
+function transitionView() {
+  unitMeshes.forEach(mesh => {
+    const unit = mesh.userData.unit;
+    if (currentView === 'matrix') {
+      const unitsThisYear = curriculum.units.filter(u => u.year === unit.year);
+      const x = (unit.position - (unitsThisYear.length - 1) / 2) * 2.2;
+      const yi = curriculum.years.indexOf(unit.year);
+      mesh.userData.targetPosition = new THREE.Vector3(x, yi * 3, 0);
+    } else {
+      mesh.userData.targetPosition = mesh.userData.basePosition.clone();
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RAYCASTING
+// ═══════════════════════════════════════════════════════════════
+function handleHover(e) {
+  const mouse = new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(mouse, camera);
+  const allClickable = [...unitMeshes, ...gloMeshes, ...cloMeshes];
+  const intersects = raycaster.intersectObjects(allClickable);
+  const tooltip = document.getElementById('tooltip');
+
+  if (intersects.length > 0) {
+    const mesh = intersects[0].object;
+    if (mesh !== hoveredMesh) { if (hoveredMesh) hoveredMesh.scale.setScalar(1); hoveredMesh = mesh; mesh.scale.setScalar(1.3); }
+    if (mesh.userData.isGLO) {
+      const g = mesh.userData.gloId;
+      tooltip.innerHTML = `<strong style="color:${GLO_COLORS[g]}">GLO ${g + 1}: ${GLO_NAMES[g]}</strong><br>Click to highlight`;
+    } else if (mesh.userData.isCLO) {
+      const clo = mesh.userData.cloData;
+      tooltip.innerHTML = `<strong style="color:${GLO_COLORS[clo.gloId]}">${clo.short}</strong><br>${clo.text.substring(0, 120)}…`;
+    } else {
+      const u = mesh.userData.unit;
+      const tierIcons = { aol: '◆ AOL', clo: '▣ CLO', developing: '○ Dev' };
+      tooltip.innerHTML = `<strong>${u.code}: ${u.name}</strong><br>Y${u.year} · ${u.cloIds.length} CLOs · ${tierIcons[u.taskTier] || '○ Dev'}<br><em>${u.assessmentName}</em> · <span class="bloom-tag bloom-${u.bloomLevel}">${BLOOM_LEVELS[u.bloomLevel]}</span>`;
+    }
+    tooltip.style.left = (e.clientX + 15) + 'px'; tooltip.style.top = (e.clientY - 10) + 'px';
+    tooltip.classList.add('show');
+    document.getElementById('canvas-container').style.cursor = 'pointer';
+  } else {
+    if (hoveredMesh) { hoveredMesh.scale.setScalar(1); hoveredMesh = null; }
+    tooltip.classList.remove('show');
+    document.getElementById('canvas-container').style.cursor = 'grab';
+  }
+}
+
+function handleClick(e) {
+  const mouse = new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObjects([...unitMeshes, ...gloMeshes, ...cloMeshes]);
+  if (intersects.length > 0) {
+    const mesh = intersects[0].object;
+    if (mesh.userData.isGLO || mesh.userData.isCLO) highlightGLO(mesh.userData.gloId);
+    else showDetail(mesh.userData.unit);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ANIMATION
+// ═══════════════════════════════════════════════════════════════
+function animate() {
+  requestAnimationFrame(animate);
+  time += 0.01;
+
+  spherical.theta += (targetSpherical.theta - spherical.theta) * 0.08;
+  spherical.phi += (targetSpherical.phi - spherical.phi) * 0.08;
+  spherical.radius += (targetSpherical.radius - spherical.radius) * 0.08;
+  if (!isDragging) targetSpherical.theta += 0.001;
+
+  camera.position.x = spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+  camera.position.y = spherical.radius * Math.cos(spherical.phi) + 5;
+  camera.position.z = spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+  camera.lookAt(0, 5, 0);
+
+  unitMeshes.forEach((mesh, i) => {
+    const target = mesh.userData.targetPosition || mesh.userData.basePosition;
+    mesh.position.x += (target.x - mesh.position.x) * 0.05;
+    mesh.position.y = target.y + Math.sin(time + i * 0.5) * 0.05;
+    mesh.position.z += (target.z - mesh.position.z) * 0.05;
+    if (mesh.userData.unit.taskTier === 'aol') { mesh.rotation.y += 0.005; mesh.rotation.x += 0.002; }
+    else if (mesh.userData.unit.taskTier === 'clo') { mesh.rotation.y += 0.003; }
+  });
+
+  gloMeshes.forEach((mesh, i) => {
+    mesh.rotation.y += 0.008; mesh.rotation.x += 0.003;
+    mesh.position.y = mesh.userData.basePosition.y + Math.sin(time * 0.8 + i * 0.8) * 0.1;
+  });
+
+  cloMeshes.forEach((mesh, i) => {
+    mesh.rotation.y += 0.006;
+    mesh.position.y = mesh.userData.basePosition.y + Math.sin(time * 0.6 + i * 0.45) * 0.04;
+  });
+
+  spiralGroup.children.forEach(child => { if (child.userData && child.userData.isGLORing) child.lookAt(camera.position); });
+
+  renderer.render(scene, camera);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODAL & FILE HANDLING
+// ═══════════════════════════════════════════════════════════════
+function showModal() { document.getElementById('modal').classList.add('show'); }
+function hideModal() { document.getElementById('modal').classList.remove('show'); }
+
+function showStatus(type, msg) {
+  const bar = document.getElementById('status-bar');
+  const dot = document.getElementById('status-dot');
+  const text = document.getElementById('status-text');
+  dot.style.background = type === 'success' ? 'var(--success)' : type === 'error' ? 'var(--glo1)' : 'var(--accent)';
+  text.textContent = msg;
+  bar.classList.add('show');
+  setTimeout(() => bar.classList.remove('show'), 4000);
+}
+
+// Drop zone
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) loadFile(file);
+});
+
+fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+function loadFile(file) {
+  if (!file.name.endsWith('.csv')) { showStatus('error', 'Please upload a .csv file'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    parsedCSV = e.target.result;
+    const info = document.getElementById('file-info');
+    info.style.display = 'block';
+    info.textContent = `✓ ${file.name} loaded (${(file.size / 1024).toFixed(1)} KB)`;
+    document.getElementById('apply-btn').disabled = false;
+    dropZone.querySelector('.label').innerHTML = `<strong>${file.name}</strong> ready to apply`;
+  };
+  reader.readAsText(file);
+}
+
+function applyCSV() {
+  if (!parsedCSV) return;
+  const data = parseCSVData(parsedCSV);
+  if (data && data.units.length > 0) {
+    curriculum = { units: data.units, years: data.years };
+    buildModel(data);
+    hideModal();
+  } else {
+    showStatus('error', 'No valid unit rows found in CSV');
+  }
+}
+
+// Template download
+document.getElementById('download-template').addEventListener('click', e => {
+  e.preventDefault();
+  const blob = new Blob([TEMPLATE_CSV], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'curriculum_template.csv'; a.click();
+  URL.revokeObjectURL(url);
+});
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+initScene();
+
+// Auto-load the built-in template
+parsedCSV = TEMPLATE_CSV;
+const initData = parseCSVData(TEMPLATE_CSV);
+if (initData) {
+  curriculum = { units: initData.units, years: initData.years };
+  buildModel(initData);
+}
+</script>
+</body>
+</html>
