@@ -2,7 +2,7 @@
 
 This guide covers refreshing the dashboard with new CALM data for **SEBE** courses (Faculty of Science, Engineering and Built Environment), sharing the v7 beta, and using it. Updating takes about 10 minutes. A recipient does not need Python or the CALM processing scripts.
 
-**You need:** access to CALM (Power BI), Chrome, and the Magma folder in iCloud Drive (`iCloud Drive › Debusseycat › Magma`).
+**You need:** access to CALM (Power BI), Chrome or Edge, Python 3, and a Magma folder. The main copy is in iCloud Drive (`iCloud Drive › Debusseycat › Magma`); a copy anywhere else, including on Windows, works the same way.
 
 ---
 
@@ -22,20 +22,25 @@ This guide covers refreshing the dashboard with new CALM data for **SEBE** cours
 
 ## Step 2: Process the new upload set for the dashboard
 
-From the Magma root, run:
+Double-click the launcher in the Magma folder:
+
+- **Mac:** `Extract SEBE.command`
+- **Windows:** `Extract SEBE.bat`
+
+Or run it from a terminal (`python3` on Mac, `py` on Windows):
 
 ```bash
-cd ~/Library/Mobile\ Documents/com~apple~CloudDocs/Debusseycat/Magma
 python3 update-dashboard-data.py
 ```
 
+The script works on the folder it sits in, wherever that folder is: iCloud, OneDrive, a USB stick or a plain local folder. Keep the scripts, the launchers and the `CALM-dashboard-YYYYMMDD` folders together in one Magma folder. To process a Magma folder somewhere else, add `--folder PATH`.
+
 The script automatically:
-1. scans every `CALM-dashboard-YYYYMMDD` folder in the Magma copies it can find;
-2. syncs any new or changed folder data between the iCloud and GitHubRepos copies (`old/` is never touched);
-3. validates each export folder before it is treated as usable;
-4. runs the SEBE extraction if the outputs are missing or stale;
-5. rebuilds `SEBE-statistics.xlsx` when needed;
-6. selects the newest valid, dashboard-ready SEBE folder and prints where to upload from.
+1. scans every `CALM-dashboard-YYYYMMDD` folder beside it;
+2. validates each export folder before it is treated as usable;
+3. runs the SEBE extraction if the outputs are missing or stale;
+4. rebuilds `SEBE-statistics.xlsx` when needed;
+5. selects the newest valid, dashboard-ready SEBE folder and prints where to upload from.
 
 Typical output looks like:
 
@@ -75,6 +80,11 @@ python3 update-dashboard-data.py --archive-sebe
 Before rebuilding the current `SEBE` folder, the script moves the previous active output aside as a dated snapshot such as `SEBE-20261102`. The current `SEBE` folder is then rebuilt for the newest dataset, while the earlier snapshot remains available if you want to pick an older date explicitly.
 
 **First time only in Finder:** if macOS says the script "can't be opened", right-click `Extract SEBE.command`, choose **Open**, then confirm with **Open**.
+
+**Windows, first time only:**
+1. Install Python 3 from python.org. On the first install screen, tick **Add python.exe to PATH**.
+2. If Windows shows "Windows protected your PC" when you double-click `Extract SEBE.bat`, choose **More info**, then **Run anyway**.
+3. The script opens the finished `SEBE` folder in File Explorer, just as it opens Finder on a Mac.
 
 ---
 

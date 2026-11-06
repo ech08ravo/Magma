@@ -2,35 +2,40 @@
 """
 Run after adding a new CALM-dashboard-YYYYMMDD folder:
 
-    python3 update-dashboard-data.py            # SEBE
-    python3 update-dashboard-data.py --no-open  # don't open Finder at the end
+    python3 update-dashboard-data.py            # SEBE (Mac: or double-click Extract SEBE.command)
+    py update-dashboard-data.py                 # the same on Windows (or double-click Extract SEBE.bat)
+    python3 update-dashboard-data.py --no-open  # don't open the folder at the end
+    python3 update-dashboard-data.py --folder PATH   # use another Magma folder
 
 It
-  1. finds every CALM-dashboard-YYYYMMDD folder in the iCloud and repo Magma
-     folders, and copies new or changed files across so both sides match
-     (old/ is never touched);
+  1. works in the folder this script is in (or --folder), wherever that is;
   2. checks each folder has the three CALM exports;
   3. runs the SEBE extract (extract-faculty.py) for any folder whose SEBE/
      output is missing or older than its exports, and (re)builds
      SEBE-statistics.xlsx beside it (make-statistics.py);
-  4. prints the SEBE folder to drop into the dashboard and opens it in Finder.
-Uses only the Python standard library.
+  4. prints the SEBE folder to drop into the dashboard and opens it in Finder
+     or File Explorer.
+Uses only the Python standard library. Works on macOS and Windows.
 """
 import argparse
 import importlib.util
+import os
 import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-ICLOUD = Path.home() / 'Library/Mobile Documents/com~apple~CloudDocs/Debusseycat/Magma'
-REPO = Path.home() / 'GitHubRepos/Magma'
 FOLDER_RE = re.compile(r'^CALM-dashboard-(\d{8})$')
 FACULTY = 'SEBE'
-SKIP = {'.DS_Store'}
 
 sys.dont_write_bytecode = True   # don't leave __pycache__ in the Magma folders
+# Windows consoles may not be UTF-8; never crash on a printed '→' or '…'.
+for stream in (sys.stdout, sys.stderr):
+    try:
+        stream.reconfigure(errors='replace')
+    except (AttributeError, ValueError):
+        pass
 here = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('extract_faculty', here / 'extract-faculty.py')
 xf = importlib.util.module_from_spec(spec)
@@ -41,24 +46,30 @@ ms = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ms)
 
 
+def run_script(name, *args):
+    """Run a sibling script with this same Python (python3 on Mac, py on Windows)."""
+    env = dict(os.environ, PYTHONUTF8='1', PYTHONIOENCODING='utf-8')
+    return subprocess.run([sys.executable, str(here / name), *args], capture_output=True,
+                          text=True, encoding='utf-8', errors='replace', env=env)
+
+
+def open_folder(path):
+    """Show a folder in Finder (Mac) or File Explorer (Windows)."""
+    try:
+        if sys.platform == 'win32':
+            os.startfile(str(path))
+        elif sys.platform == 'darwin':
+            subprocess.run(['open', str(path)])
+        else:
+            subprocess.run(['xdg-open', str(path)])
+    except Exception:
+        pass   # the path is already printed
+
+
 def calm_folders(root):
     if not root.is_dir():
         return {}
     return {p.name: p for p in root.iterdir() if p.is_dir() and FOLDER_RE.match(p.name)}
-
-
-def mirror(src, dst):
-    """Copy files in src that are missing from dst or newer than dst's copy. Returns count."""
-    copied = 0
-    for f in src.rglob('*'):
-        if not f.is_file() or f.name in SKIP:
-            continue
-        target = dst / f.relative_to(src)
-        if not target.exists() or f.stat().st_mtime > target.stat().st_mtime + 1:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(f, target)
-            copied += 1
-    return copied
 
 
 def validate_export(path, required_headers, minimum_rows=2):
@@ -155,30 +166,18 @@ def main():
     parser = argparse.ArgumentParser(description='Sync CALM exports and build the SEBE dashboard data.')
     parser.add_argument('--allow-missing', action='store_true',
                         help='Warn instead of skipping folders missing required CALM export files; keeps scanning the newest complete folder.')
-    parser.add_argument('--no-open', action='store_true', help='Do not open the SEBE folder in Finder at the end.')
+    parser.add_argument('--no-open', action='store_true', help='Do not open the SEBE folder at the end.')
+    parser.add_argument('--folder', help='Magma folder holding the CALM-dashboard-YYYYMMDD folders. '
+                        'Default: the folder this script is in.')
     parser.add_argument('--archive-sebe', action='store_true',
                         help='Keep the previous active SEBE folder as a dated snapshot before rebuilding it (e.g. SEBE-20261102).')
     args = parser.parse_args()
 
-    roots = [r for r in (ICLOUD, REPO) if r.is_dir()]
-    if not roots:
-        sys.exit(f'Neither Magma folder found:\n  {ICLOUD}\n  {REPO}')
-
-    # 1. Sync CALM folders between the two Magma copies (both directions, newest wins)
-    if len(roots) == 2:
-        for a, b in ((ICLOUD, REPO), (REPO, ICLOUD)):
-            for name, folder in sorted(calm_folders(a).items()):
-                n = mirror(folder, b / name)
-                if n:
-                    print(f'Synced {n} file(s): {a.parent.name}/{a.name}/{name} → {b.parent.name}/{b.name}')
-    else:
-        print(f'Only one Magma folder found ({roots[0]}); skipping sync.')
-
-    # 2–3. Check and extract, working in the first available root
-    main_root = roots[0]
+    main_root = Path(args.folder).expanduser().resolve() if args.folder else here
     folders = sorted(calm_folders(main_root).items())
     if not folders:
-        sys.exit(f'No CALM-dashboard-YYYYMMDD folders in {main_root}')
+        sys.exit(f'No CALM-dashboard-YYYYMMDD folders in {main_root}\n'
+                 'Put this script in the Magma folder, or run it with --folder PATH.')
 
     for name, folder in folders:
         missing = [n for n in REQUIRED if not (folder / n).exists()]
@@ -206,7 +205,7 @@ def main():
                 if archived:
                     print(f'  archived previous {FACULTY} folder to {archived.name}')
             print(f'\n{name}: extracting {FACULTY}…')
-            rc = subprocess.run(['python3', str(here / 'extract-faculty.py'), FACULTY, str(folder)], capture_output=True, text=True)
+            rc = run_script('extract-faculty.py', FACULTY, str(folder))
             if rc.returncode != 0:
                 print(f'  extract-faculty.py failed for {name}:')
                 if rc.stderr.strip():
@@ -217,7 +216,7 @@ def main():
         else:
             print(f'\n{name}:')
         print(f'  building {FACULTY}-statistics.xlsx…')
-        rc = subprocess.run(['python3', str(here / 'make-statistics.py'), str(folder), FACULTY], capture_output=True, text=True)
+        rc = run_script('make-statistics.py', str(folder), FACULTY)
         if rc.returncode != 0:
             print(f'  make-statistics.py failed for {name}:')
             if rc.stderr.strip():
@@ -225,10 +224,6 @@ def main():
             if rc.stdout.strip():
                 print(rc.stdout.strip())
             continue
-        if len(roots) == 2:
-            other = (REPO if main_root == ICLOUD else ICLOUD) / name
-            mirror(folder, other)
-            print(f'  copied {FACULTY}/ and {FACULTY}-statistics.xlsx to {other.parent}')
 
     # 4. Point at the newest folder whose extract is complete, valid and current
     latest = latest_valid_folder(folders)
@@ -237,7 +232,7 @@ def main():
         print(f'\nDrop these 3 files into the dashboard:\n  {latest_out}')
         print(f'Statistics workbook:\n  {latest / (FACULTY + "-statistics.xlsx")}')
         if not args.no_open and '--no-open' not in sys.argv:
-            subprocess.run(['open', str(latest_out)])
+            open_folder(latest_out)
     else:
         print('\nNo usable dashboard-ready folder was found: check the export files for missing or invalid CALM data.')
 
