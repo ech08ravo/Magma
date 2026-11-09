@@ -715,11 +715,7 @@ Private Sub BuildBalance(ByVal sheetName As String, ByVal allMode As Boolean)
         ws.Range("A3").Value = "Every task under each GLO it addresses, by year level: " & GFlag() & " AoL + hurdle, " & GDot() & " AoL, " & _
             GDiamond() & " hurdle only, " & GRing() & " neither, in the GLO's colour. GLO alignment from unit guides where the export has it; " & _
             "otherwise CALM, which only aligns AoL tasks (lines marked " & GMid() & " CALM). Type* = CALM Student Output until Assessment type is filled in."
-    Else
-        ws.Range("A3").Value = "Target: every GLO assessed in at least " & AOL_TARGET & " AoL tasks (" & GFlag() & " AoL + hurdle, " & GDot() & _
-            " AoL) at every year level (CALM records GLO alignments on AoL tasks only). Type* = CALM Student Output until Assessment type is filled in. " & _
-            "Follows filters on the Tasks sheet (e.g. one pathway's " & GDot() & " column = one major)."
-    End If
+    End If                                          ' (no description on AOL type balance: removed on request)
     Fmt ws.Range("A3"), False, 9, "#4B5563"
     Dim legend As String
     For k = 1 To TCount: legend = legend & IIf(k > 1, SepDot(), "") & TCode(k) & " " & TLabel(k): Next k
@@ -813,9 +809,6 @@ Private Sub BuildBalance(ByVal sheetName As String, ByVal allMode As Boolean)
     If allMode Then
         ws.Range("A2").Formula = "=""All tasks by GLO" & SepDot() & """&(" & f & ")&"" of " & (UBound(Split(statusCells, ",")) + 1) & _
             " GLO " & GTimes() & " year cells have no task" & SepDot() & "follows filters on the Tasks sheet"""
-    Else
-        ws.Range("A2").Formula = "=""Assessment balance" & SepDot() & """&(" & f & ")&"" of " & (UBound(Split(statusCells, ",")) + 1) & _
-            " GLO " & GTimes() & " year cells have " & AOL_TARGET & "+ AoL tasks" & SepDot() & "follows filters on the Tasks sheet"""
     End If
     Fmt ws.Range("A2"), False, 0, "#6B7280", "", True
     ws.Activate

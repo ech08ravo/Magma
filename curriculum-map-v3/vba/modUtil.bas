@@ -450,3 +450,9 @@ Public Function YearLevelLabel(ByVal y As String) As String
         Case Else: YearLevelLabel = y
     End Select
 End Function
+
+' Switch Excel events back on (click-to-filter needs them). Returns the state.
+Public Function EventsOn() As String
+    Application.EnableEvents = True
+    EventsOn = "events " & Application.EnableEvents
+End Function

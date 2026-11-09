@@ -1,6 +1,7 @@
 Option Explicit
 
 ' Click a GLO or mode label (or its box) on Timeline / Weeks to toggle that filter.
+' Never leaves events switched off: any error jumps straight to Done.
 Private Sub Workbook_SheetSelectionChange(ByVal Sh As Object, ByVal Target As Range)
     Dim r As Long, c As Long, blk As Long, box As Range
     If Sh.Name <> "Timeline" And Sh.Name <> "Weeks" Then Exit Sub
@@ -15,8 +16,18 @@ Private Sub Workbook_SheetSelectionChange(ByVal Sh As Object, ByVal Target As Ra
     Else
         Exit Sub
     End If
+    On Error GoTo Done
     Application.EnableEvents = False
     If box.Value = 1 Then box.Value = 0 Else box.Value = 1
-    Sh.Range("A1").Select
+    ' move off the label so the same label can be clicked again (skipped if Excel refuses)
+    If Not ActiveSheet Is Nothing Then
+        If ActiveSheet.Name = Sh.Name Then Sh.Range("A1").Select
+    End If
+Done:
+    Application.EnableEvents = True
+End Sub
+
+' Safety net: whenever the workbook is activated, make sure events are on.
+Private Sub Workbook_Activate()
     Application.EnableEvents = True
 End Sub
