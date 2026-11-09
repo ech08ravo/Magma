@@ -647,6 +647,9 @@
   .timeline-at-group[data-week="none"] .timeline-week-head { border-color: #d7dbe0; color: #8a929c; }
   .timeline-card.week-from-at { border-style: dashed; border-left-style: solid; }
   .timeline-week-source { margin-top: 4px; font-size: 8px; color: #626b76; }
+  /* Course code in the card's bottom-right corner (tells related courses apart) */
+  .timeline-card-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 6px; }
+  .timeline-card-course { margin-left: auto; margin-top: 4px; padding: 1px 4px; border-radius: 3px; background: #edf0f4; color: #454d57; font-size: 8px; font-weight: 700; letter-spacing: 0.03em; white-space: nowrap; }
   .timeline-week-source.guide { color: #2f5f8f; font-weight: 600; }
   .timeline-legend-dashed { display: inline-block; width: 18px; height: 11px; border: 1px dashed #8a929c; border-left: 3px solid #8a929c; border-radius: 3px; vertical-align: -1px; }
   .timeline-empty { padding: 14px 8px; text-align: center; color: #626b76; font-size: 11px; }
@@ -3901,7 +3904,10 @@ function renderAssessmentTimeline() {
         <span>AoL type: ${escapeHtml(at.type === 'NA' ? 'N/A' : at.type || '—')}</span>
       </div>
       <div class="timeline-alignment" aria-label="GLO alignment">${alignment}</div>
-      ${weekLine}
+      <div class="timeline-card-foot">
+        ${weekLine}
+        <span class="timeline-card-course" title="${escapeAttr(`${course.title} (${course.code})`)}">${escapeHtml(course.code)}</span>
+      </div>
     </article>`;
   };
   const axis = `<div class="timeline-axis">
