@@ -2,11 +2,20 @@
 <!--
   ════════════════════════════════════════════════════════════════════════
   Curriculum Framework Dashboard
-  Version: 7.1 (beta)
+  Version: 7.2 (beta)
   Last updated: 2026-11-09
   Schema:  see SCHEMA-v2.md (CALM-native)
   ════════════════════════════════════════════════════════════════════════
   CHANGELOG
+  v7.2 (2026-11-09) — Richer timeline export.
+                      • CSV/Excel timeline exports gain columns at the end
+                        (earlier columns unchanged): Task Alignment and
+                        Alignment Mark (the card's flag/circle/diamond/ring),
+                        Aligned GLOs (the card's GLO dots), and Guide Weeks,
+                        Guide Week Detail, Guide File, Guide Evidence from
+                        loaded unit guides (blank otherwise). The Week view's
+                        AT-number fallback is not exported. The dashboard
+                        does not read these exports back in yet.
   v7.1 (2026-11-09) — Week view as a timeline.
                       • Week view now uses the Trimester view's layout (study
                         year × trimester, task cards) with week columns
@@ -337,7 +346,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Curriculum Framework Dashboard v7.1 beta — CALM</title>
+<title>Curriculum Framework Dashboard v7.2 beta — CALM</title>
 <!-- Libraries load from lib/ next to this file (works offline); if lib/ is missing, fall back to the CDN. -->
 <script src="lib/three.min.js"></script>
 <script src="lib/papaparse.min.js"></script>
@@ -1071,7 +1080,7 @@
 
 <div class="ui-layer header">
   <div>
-    <h1 id="dashboard-title">Curriculum Framework Dashboard <span style="font-size:14px;color:var(--text-dim);" title="See &lt;!-- CHANGELOG --&gt; in the HTML source for version history">v7.1 beta</span></h1>
+    <h1 id="dashboard-title">Curriculum Framework Dashboard <span style="font-size:14px;color:var(--text-dim);" title="See &lt;!-- CHANGELOG --&gt; in the HTML source for version history">v7.2 beta</span></h1>
     <div class="subtitle" id="dashboard-subtitle">Drop the prepared SEBE files (Student Pathways + Units by Assessment Tasks; Course Data is optional) to populate the model.</div>
   </div>
   <div class="controls-row">
@@ -4177,9 +4186,24 @@ function buildTimelineExportRows() {
       GLO_NAMES.forEach((name, index) => {
         row[`GLO${index + 1} (${name})`] = stateLabel(at.gloStates[index] || 'blank');
       });
+      // v7.2 additions (appended so earlier columns keep their positions):
+      // the timeline card's alignment mark and GLO dots, and unit-guide weeks.
+      // Guide columns stay blank without a guide; the Week view's AT-number
+      // fallback is not exported.
+      const kind = taskMarkKind(at);
+      row['Task Alignment'] = EXPORT_ALIGNMENT_LABELS[kind];
+      row['Alignment Mark'] = EXPORT_ALIGNMENT_MARKS[kind];
+      row['Aligned GLOs'] = at.gloIds.map(id => `GLO${id + 1}`).join(', ');
+      const guideWeeks = unitGuideData.size ? guideWeeksForTask(unit, at) : null;
+      row['Guide Weeks'] = guideWeeks ? guideWeeks.weeks.map(week => week.week).join('; ') : '';
+      row['Guide Week Detail'] = guideWeeks ? guideWeeks.label : '';
+      row['Guide File'] = guideWeeks ? guideWeeks.guide.fileName : '';
+      row['Guide Evidence'] = guideWeeks ? guideWeeks.evidence : '';
       return row;
     });
 }
+const EXPORT_ALIGNMENT_LABELS = { aolHurdle: 'AoL + hurdle', aol: 'AoL, non-hurdle', hurdle: 'Hurdle, non-AoL', plain: 'Neither' };
+const EXPORT_ALIGNMENT_MARKS = { aolHurdle: '⚑', aol: '●', hurdle: '◆', plain: '○' };
 
 function timelineExportBaseName() {
   const { selectedUnit, selectedCourse, courses } = timelineRecords();

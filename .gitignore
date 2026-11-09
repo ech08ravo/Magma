@@ -5,3 +5,4 @@ old/*.mp4
 # CALM exports and outputs: institutional data, keep out of git
 CALM-dashboard-*/
 SEBE-statistics.xlsx
+~$*
