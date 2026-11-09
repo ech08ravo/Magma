@@ -2,11 +2,28 @@
 <!--
   ════════════════════════════════════════════════════════════════════════
   Curriculum Framework Dashboard
-  Version: 7.2 (beta)
+  Version: 7.4 (beta)
   Last updated: 2026-11-09
   Schema:  see SCHEMA-v2.md (CALM-native)
   ════════════════════════════════════════════════════════════════════════
   CHANGELOG
+  v7.4 (2026-11-09) — Unit-guide GLO alignment.
+                      • Reads each guide's "Summative assessment task" sections
+                        for the ULOs assessed and their GLO alignment (CALM
+                        records GLOs on AoL tasks only). End-of-Unit/exam
+                        tasks use the guide's unnumbered End-of-unit section.
+                      • Timeline cards show "Guide GLOs: … · ULO …" with the
+                        source in the tooltip. Exports append Guide ULOs and
+                        Guide GLOs.
+  v7.3 (2026-11-09) — Planning workbook read-back.
+                      • Optional "Planning workbook" upload: the Excel
+                        curriculum map's Tasks sheet (or any sheet with Unit
+                        Code + AT Number + planning columns). Matched to CALM
+                        tasks by unit code + AT number.
+                      • Timeline cards show Type (Assessment type) and Tools.
+                        Week view places tasks by Planned Weeks first, then
+                        unit-guide weeks, then the AT-number fallback.
+                      • Exports append Tools, Assessment type, Planned Weeks.
   v7.2 (2026-11-09) — Richer timeline export.
                       • CSV/Excel timeline exports gain columns at the end
                         (earlier columns unchanged): Task Alignment and
@@ -346,7 +363,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Curriculum Framework Dashboard v7.2 beta — CALM</title>
+<title>Curriculum Framework Dashboard v7.4 beta — CALM</title>
 <!-- Libraries load from lib/ next to this file (works offline); if lib/ is missing, fall back to the CDN. -->
 <script src="lib/three.min.js"></script>
 <script src="lib/papaparse.min.js"></script>
@@ -658,6 +675,8 @@
   .timeline-week-source { margin-top: 4px; font-size: 8px; color: #626b76; }
   /* Course code in the card's bottom-right corner (tells related courses apart) */
   .timeline-card-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 6px; }
+  .timeline-card-plan { display: flex; flex-wrap: wrap; gap: 2px 7px; margin-top: 4px; font-size: 8px; color: #1f5f57; font-weight: 600; }
+  .timeline-week-source.planned { color: #1f6f66; font-weight: 600; }
   .timeline-card-course { margin-left: auto; margin-top: 4px; padding: 1px 4px; border-radius: 3px; background: #edf0f4; color: #454d57; font-size: 8px; font-weight: 700; letter-spacing: 0.03em; white-space: nowrap; }
   .timeline-week-source.guide { color: #2f5f8f; font-weight: 600; }
   .timeline-legend-dashed { display: inline-block; width: 18px; height: 11px; border: 1px dashed #8a929c; border-left: 3px solid #8a929c; border-radius: 3px; vertical-align: -1px; }
@@ -1080,7 +1099,7 @@
 
 <div class="ui-layer header">
   <div>
-    <h1 id="dashboard-title">Curriculum Framework Dashboard <span style="font-size:14px;color:var(--text-dim);" title="See &lt;!-- CHANGELOG --&gt; in the HTML source for version history">v7.2 beta</span></h1>
+    <h1 id="dashboard-title">Curriculum Framework Dashboard <span style="font-size:14px;color:var(--text-dim);" title="See &lt;!-- CHANGELOG --&gt; in the HTML source for version history">v7.4 beta</span></h1>
     <div class="subtitle" id="dashboard-subtitle">Drop the prepared SEBE files (Student Pathways + Units by Assessment Tasks; Course Data is optional) to populate the model.</div>
   </div>
   <div class="controls-row">
@@ -1336,6 +1355,11 @@ See SCHEMA-v2.md for full vocabulary.</div>
       <div class="role-row" data-role="course_titles">
         <span class="role-dot"></span>
         <span class="role-name">Course Data (optional)</span>
+        <span class="role-file" style="color:var(--text-dim);">— not loaded</span>
+      </div>
+      <div class="role-row" data-role="planning">
+        <span class="role-dot"></span>
+        <span class="role-name">Planning workbook (optional)</span>
         <span class="role-file" style="color:var(--text-dim);">— not loaded</span>
       </div>
       <div class="role-row" data-role="legacy_merged" style="display:none;">
@@ -1686,6 +1710,10 @@ function sniffRole(headers) {
   if (hasPaired && hasH(['Task Number']) && hasH(['Assessment Title'])) return 'calm_tasks';
   // CALM File 1 — pathway-level (paired GLO/CLO + Student Pathway, NO Task Number)
   if (hasPaired && hasH(['Student Pathway'])) return 'calm_pathways';
+  // Planning workbook (v7.3): the curriculum map's Tasks sheet, or any sheet with
+  // Unit Code + AT Number and at least one planning column. Optional overlay.
+  if (!hasPaired && hasH(['Unit Code']) && hasH(['AT Number', 'Task Number']) &&
+      hasH(PLANNING_FIELDS.map(field => field.header))) return 'planning';
   return 'unknown';
 }
 
@@ -1727,6 +1755,45 @@ function detectLegacyGloCols(headers) {
 let loadedSources = {};
 let loadedSourceFilenames = {};
 let unitGuideData = new Map();
+// Planning overlay (v7.3): columns the team fills in the Excel curriculum map, read
+// back from its Tasks sheet and matched to CALM tasks by unit code + AT number.
+const PLANNING_FIELDS = [
+  { key: 'tools', header: 'Tools', label: 'Tools' },
+  { key: 'assessmentType', header: 'Assessment type', label: 'Type' },
+  { key: 'plannedWeeks', header: 'Planned Weeks', label: 'Planned weeks' }
+];
+let planningData = new Map();
+function planningKey(unitCode, atNumber) {
+  return `${String(unitCode || '').trim().toUpperCase()}|${String(atNumber || '').trim().toUpperCase()}`;
+}
+function buildPlanningIndex(rows) {
+  const index = new Map();
+  if (!rows || !rows.length) return index;
+  const headers = Object.keys(rows[0]);
+  const colUnit = findHeader(headers, ['Unit Code']);
+  const colAt = findHeader(headers, ['AT Number', 'Task Number']);
+  const cols = PLANNING_FIELDS.map(field => [field.key, findHeader(headers, [field.header])]);
+  rows.forEach(row => {
+    const key = planningKey(row[colUnit], row[colAt]);
+    if (key === '|') return;
+    const entry = index.get(key) || {};
+    // a task repeated per trimester: the first non-empty value wins
+    cols.forEach(([field, col]) => {
+      const value = col ? String(row[col] ?? '').trim() : '';
+      if (value && !entry[field]) entry[field] = value;
+    });
+    if (Object.keys(entry).length) index.set(key, entry);
+  });
+  return index;
+}
+function planningFor(unit, at) {
+  return planningData.get(planningKey(unit.code, at.number)) || null;
+}
+function plannedWeekNumbers(plan) {
+  return plan && plan.plannedWeeks
+    ? [...new Set((plan.plannedWeeks.match(/\d+/g) || []).map(Number))].sort((a, b) => a - b)
+    : [];
+}
 let unitGuideErrors = [];
 let unitGuideFilesRead = 0;
 
@@ -1771,7 +1838,7 @@ function updateUnitGuideStatus() {
   const weekCount = [...unitGuideData.values()].reduce((total, guide) =>
     total + guide.assessments.reduce((count, assessment) => count + assessment.weeks.length, 0), 0);
   const summary = unitGuideFilesRead
-    ? `Scanned ${unitGuideFilesRead} guide PDF${unitGuideFilesRead === 1 ? '' : 's'}; ${unitGuideData.size} contain submission weeks (${weekCount} week entr${weekCount === 1 ? 'y' : 'ies'}) for ${matchingUnits.length} loaded unit${matchingUnits.length === 1 ? '' : 's'}. Guide details are shown in amber.`
+    ? `Scanned ${unitGuideFilesRead} guide PDF${unitGuideFilesRead === 1 ? '' : 's'}: ${weekCount} submission-week entr${weekCount === 1 ? 'y' : 'ies'} and ULO/GLO alignment for ${[...unitGuideData.values()].reduce((total, guide) => total + (guide.alignment ? guide.alignment.size : 0), 0)} tasks, covering ${matchingUnits.length} loaded unit${matchingUnits.length === 1 ? '' : 's'}. Guide details are shown in amber.`
     : 'No guide PDFs were scanned.';
   status.textContent = summary +
     (unitGuideErrors.length ? ` ${unitGuideErrors.length} file${unitGuideErrors.length === 1 ? '' : 's'} could not be read: ${unitGuideErrors.slice(0, 3).join('; ')}${unitGuideErrors.length > 3 ? '; …' : ''}` : '');
@@ -1876,6 +1943,46 @@ function extractUnitGuideAssessments(text) {
   return [...assessmentsByTask.values()];
 }
 
+// v7.4: per-task ULO → GLO alignment from each "Summative assessment task" section.
+// CALM records GLOs on AoL tasks only; unit guides list them for every task.
+// Returns Map: task number (1, 2, …) or 'eou' (unnumbered End-of-unit/Examination) → { ulos, glos }.
+function extractUnitGuideAlignment(text) {
+  const normalized = String(text || '').replace(/\u00a0/g, ' ').replace(/\r/g, '\n');
+  const headingPattern = /summative\s+assessment\s+task\s*[-:#]?\s*(\d+|end[\s-]*of[\s-]*unit[^\n]*|examination[^\n]*)/gi;
+  const stopPattern = /formative\s+assessment|learning\s+resources|unit\s+learning\s+experiences|your\s+rights\s+and\s+responsibilities/i;
+  const headings = [...normalized.matchAll(headingPattern)];
+  const alignment = new Map();
+  headings.forEach((heading, index) => {
+    const end = headings[index + 1]?.index ?? normalized.length;
+    let section = normalized.slice(heading.index + heading[0].length, end);
+    const stop = section.search(stopPattern);
+    if (stop >= 0) section = section.slice(0, stop);
+    const glos = [...section.matchAll(/GLO\s*(\d)/g)].map(m => Number(m[1])).filter(n => n >= 1 && n <= 8);
+    const ulos = [...section.matchAll(/ULO\s*(\d{1,2})/g)].map(m => Number(m[1]));
+    if (!glos.length && !ulos.length) return;          // table-of-contents entries etc.
+    const key = /^\d+$/.test(heading[1].trim()) ? Number(heading[1]) : 'eou';
+    const entry = alignment.get(key) || { glos: new Set(), ulos: new Set() };
+    glos.forEach(n => entry.glos.add(n));
+    ulos.forEach(n => entry.ulos.add(n));
+    alignment.set(key, entry);
+  });
+  return new Map([...alignment].map(([key, entry]) => [key, {
+    glos: [...entry.glos].sort((a, b) => a - b),
+    ulos: [...entry.ulos].sort((a, b) => a - b)
+  }]));
+}
+
+// Guide alignment for one CALM task: an End-of-Unit/exam task uses the guide's
+// unnumbered End-of-unit section when there is one; otherwise match by AT number.
+function guideAlignmentForTask(unit, at) {
+  const guide = unitGuideData.get(unit.code);
+  if (!guide || !guide.alignment || !guide.alignment.size) return null;
+  const isEndOfUnit = /end[\s-]*of[\s-]*unit|exam/i.test(at.title || '');
+  const entry = (isEndOfUnit && guide.alignment.get('eou')) ||
+    guide.alignment.get(guideAssessmentNumber(at.number));
+  return entry ? { ...entry, fileName: guide.fileName } : null;
+}
+
 async function extractPdfText(file) {
   if (!window.pdfjsLib) throw new Error('The local PDF reader is unavailable. Check that lib/pdf.min.js is beside the dashboard.');
   pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('lib/pdf.worker.min.js', document.baseURI).href;
@@ -1941,7 +2048,8 @@ async function scanUnitGuideFiles(fileList) {
       const text = await extractPdfText(file);
       const assessments = extractUnitGuideAssessments(text);
       unitGuideFilesRead++;
-      if (assessments.length) unitGuideData.set(code, { fileName: file.name, assessments });
+      const alignment = extractUnitGuideAlignment(text);
+      if (assessments.length || alignment.size) unitGuideData.set(code, { fileName: file.name, assessments, alignment });
     } catch (error) {
       unitGuideErrors.push(`${file.name}: ${error.message || error}`);
     }
@@ -3894,17 +4002,28 @@ function renderAssessmentTimeline() {
       at.participation ? `Participation: ${at.participation}` : '',
       at.studentOutput ? `Student output: ${at.studentOutput}` : ''
     ].filter(Boolean).join(' · ');
+    const guideAlign = unitGuideData.size ? guideAlignmentForTask(unit, at) : null;
+    const guideAlignLine = guideAlign && guideAlign.glos.length
+      ? `<div class="timeline-week-source guide" title="${escapeAttr(`From ${guideAlign.fileName}: this task assesses ${guideAlign.ulos.map(n => `ULO${n}`).join(', ') || 'ULOs not listed'}, aligned to ${guideAlign.glos.map(n => `GLO${n} (${GLO_NAMES[n - 1]})`).join(', ')}. Verify against the guide.`)}">Guide GLOs: ${guideAlign.glos.join(', ')}${guideAlign.ulos.length ? ` · ULO ${guideAlign.ulos.join(', ')}` : ''}</div>`
+      : '';
+    const plan = planningFor(unit, at);
+    const planLines = plan && (plan.assessmentType || plan.tools)
+      ? `<div class="timeline-card-plan">${plan.assessmentType ? `<span>Type: ${escapeHtml(plan.assessmentType)}</span>` : ''}${plan.tools ? `<span>Tools: ${escapeHtml(plan.tools)}</span>` : ''}</div>`
+      : '';
     const weekNote = !weekInfo ? ''
+      : weekInfo.source === 'planned'
+        ? `Week ${weekInfo.week} from the planning workbook (Planned Weeks)${weekInfo.guideWeeks ? `; the unit guide says ${weekInfo.guideWeeks}` : ''}.`
       : weekInfo.source === 'guide'
         ? `Week ${weekInfo.week}${weekInfo.part ? ` (${weekInfo.part})` : ''} from ${weekInfo.fileName}, “When and how to submit your work”: ${weekInfo.evidence || 'submission section'}. Verify against the guide.`
         : weekInfo.source === 'at'
           ? `Week ${weekInfo.week} assigned from the AT number for this view only; no guide week is loaded. Not a due date.`
           : 'No guide week and no AT number, so this task has no week.';
     const weekLine = !weekInfo ? ''
-      : `<div class="timeline-week-source${weekInfo.source === 'guide' ? ' guide' : ''}">${weekInfo.source === 'guide'
+      : `<div class="timeline-week-source${weekInfo.source === 'guide' ? ' guide' : weekInfo.source === 'planned' ? ' planned' : ''}">${weekInfo.source === 'guide'
           ? `Guide: Wk ${weekInfo.week}${weekInfo.part ? ` (${escapeHtml(weekInfo.part)})` : ''}`
+          : weekInfo.source === 'planned' ? `Planned: Wk ${weekInfo.week}`
           : weekInfo.source === 'at' ? 'Week from AT number' : 'No week'}</div>`;
-    return `<article class="timeline-card ${assurance === 'aol_hurdle' ? 'assurance-aol-hurdle' : assurance === 'aol_nonhurdle' ? 'assurance-aol' : assurance === 'hurdle_non_aol' ? 'assurance-hurdle' : ''}${weekInfo && weekInfo.source !== 'guide' ? ' week-from-at' : ''}" data-keyword-matches="${timelineKeywordMatches(at).join(',')}" title="${escapeAttr([weekNote, hoverDetails].filter(Boolean).join(' · '))}">
+    return `<article class="timeline-card ${assurance === 'aol_hurdle' ? 'assurance-aol-hurdle' : assurance === 'aol_nonhurdle' ? 'assurance-aol' : assurance === 'hurdle_non_aol' ? 'assurance-hurdle' : ''}${weekInfo && (weekInfo.source === 'at' || weekInfo.source === 'none') ? ' week-from-at' : ''}" data-keyword-matches="${timelineKeywordMatches(at).join(',')}" title="${escapeAttr([weekNote, hoverDetails].filter(Boolean).join(' · '))}">
       <div class="timeline-card-title">${escapeHtml(unit.code)} · ${escapeHtml(at.number || 'AT')}</div>
       <div class="timeline-assessment-title" title="${escapeAttr(at.title || 'Assessment title not supplied')}">${escapeHtml(at.title || 'Assessment title not supplied')}</div>
       <div class="timeline-card-summary">
@@ -3913,6 +4032,8 @@ function renderAssessmentTimeline() {
         <span>AoL type: ${escapeHtml(at.type === 'NA' ? 'N/A' : at.type || '—')}</span>
       </div>
       <div class="timeline-alignment" aria-label="GLO alignment">${alignment}</div>
+      ${guideAlignLine}
+      ${planLines}
       <div class="timeline-card-foot">
         ${weekLine}
         <span class="timeline-card-course" title="${escapeAttr(`${course.title} (${course.code})`)}">${escapeHtml(course.code)}</span>
@@ -4016,6 +4137,10 @@ function renderAssessmentTimeline() {
     if (!visibleRecords.length) return '<div class="timeline-empty">No assessment tasks are available for this selection.</div>';
     const weekInfosFor = record => {
       const guideWeeks = unitGuideData.size ? guideWeeksForTask(record.unit, record.at) : null;
+      const planned = plannedWeekNumbers(planningFor(record.unit, record.at));
+      if (planned.length) {
+        return planned.map(week => ({ source: 'planned', week, guideWeeks: guideWeeks ? guideWeeks.label : '' }));
+      }
       if (guideWeeks) {
         return guideWeeks.weeks.map(week => ({
           source: 'guide', week: week.week, part: week.part || '',
@@ -4199,6 +4324,15 @@ function buildTimelineExportRows() {
       row['Guide Week Detail'] = guideWeeks ? guideWeeks.label : '';
       row['Guide File'] = guideWeeks ? guideWeeks.guide.fileName : '';
       row['Guide Evidence'] = guideWeeks ? guideWeeks.evidence : '';
+      // v7.3: planning columns read back from the Excel curriculum map (blank otherwise)
+      const plan = planningFor(unit, at) || {};
+      row['Tools'] = plan.tools || '';
+      row['Assessment type'] = plan.assessmentType || '';
+      row['Planned Weeks'] = plan.plannedWeeks || '';
+      // v7.4: unit-guide ULO/GLO alignment for every task (CALM has GLOs on AoL tasks only)
+      const guideAlign = unitGuideData.size ? guideAlignmentForTask(unit, at) : null;
+      row['Guide ULOs'] = guideAlign ? guideAlign.ulos.map(n => `ULO${n}`).join(', ') : '';
+      row['Guide GLOs'] = guideAlign ? guideAlign.glos.map(n => `GLO${n}`).join(', ') : '';
       return row;
     });
 }
@@ -4835,7 +4969,8 @@ function readFileToRows(file) {
       reader.onload = e => {
         try {
           const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-          const sheetName = wb.SheetNames.find(n => n.toLowerCase() === 'export') || wb.SheetNames[0];
+          const sheetName = wb.SheetNames.find(n => n.toLowerCase() === 'export') ||
+            wb.SheetNames.find(n => n.toLowerCase() === 'tasks') || wb.SheetNames[0];
           const sheet = wb.Sheets[sheetName];
           const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
           if (!rows.length) {
@@ -4940,6 +5075,7 @@ function applyFiles() {
     // dataset's pathway/year/GLO selections can leak into the next model build.
     resetViewState();
     curriculum = data;
+    planningData = buildPlanningIndex(loadedSources.planning);
     updateUnitGuideStatus();
     buildPathwayDropdown(data.pathways);
     buildModel();
