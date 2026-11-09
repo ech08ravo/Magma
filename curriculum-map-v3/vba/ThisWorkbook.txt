@@ -1,0 +1,22 @@
+Option Explicit
+
+' Click a GLO or mode label (or its box) on Timeline / Weeks to toggle that filter.
+Private Sub Workbook_SheetSelectionChange(ByVal Sh As Object, ByVal Target As Range)
+    Dim r As Long, c As Long, blk As Long, box As Range
+    If Sh.Name <> "Timeline" And Sh.Name <> "Weeks" Then Exit Sub
+    If Target.Cells.Count > 8 Then Exit Sub
+    r = Target.Row: c = Target.Column
+    If c < 2 Then Exit Sub
+    blk = (c - 2) \ 8
+    If r = 4 And blk <= 7 Then
+        Set box = Sh.Cells(4, 2 + 8 * blk)
+    ElseIf r = 5 And blk <= 2 Then
+        Set box = Sh.Cells(5, 2 + 8 * blk)
+    Else
+        Exit Sub
+    End If
+    Application.EnableEvents = False
+    If box.Value = 1 Then box.Value = 0 Else box.Value = 1
+    Sh.Range("A1").Select
+    Application.EnableEvents = True
+End Sub
