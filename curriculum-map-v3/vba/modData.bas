@@ -131,7 +131,7 @@ Public Function ImportExportFrom(ByVal path As String) As String
     Dim extra As New Collection, h As Variant, i As Long, j As Long
     If haveOld Then
         For i = 1 To oldNC
-            If Not InArr(newHdr, nc2, oldHdr(i)) Then AddUnique extra, oldHdr(i)
+            If Not InArr(newHdr, nc2, oldHdr(i)) And Not IsExportColumn(oldHdr(i)) Then AddUnique extra, oldHdr(i)
         Next i
     End If
     For Each h In Split(PLANNING_LIST, "|")
@@ -153,6 +153,19 @@ Public Function ImportExportFrom(ByVal path As String) As String
     Exit Function
 Fail:
     ImportExportFrom = "ERR " & Err.Number & " " & Err.Description
+End Function
+
+' columns the dashboard export itself produces: never carried over from an older import
+Private Function IsExportColumn(ByVal h As String) As Boolean
+    Dim x As Variant
+    For Each x In Split("Study Year|Trimester|AT Group|Unit Code|AT Number|Task Number|Course Code|Course|Pathways|" & _
+                        "Teaching Period Source|AoL Task Type|AoL|Hurdle|Weighting|Mode|Participation|Student Output|" & _
+                        "Task Alignment|Alignment Mark|Aligned GLOs|Guide Weeks|Guide Week Detail|Guide File|" & _
+                        "Guide Evidence|Guide ULOs|Guide GLOs", "|")
+        If LCase$(h) = LCase$(x) Then IsExportColumn = True: Exit Function
+    Next x
+    If LCase$(Left$(h, 16)) = "assessment title" Then IsExportColumn = True: Exit Function
+    If Left$(h, 3) = "GLO" And InStr(h, "(") > 0 Then IsExportColumn = True
 End Function
 
 Private Function InArr(a() As String, n As Long, ByVal s As String) As Boolean
@@ -425,7 +438,7 @@ Public Sub DeriveRows()
         RMark(r) = MarkOf(V(r, "Alignment Mark"), V(r, "AoL"), V(r, "Hurdle"))
         ' CALM GLOs: "Aligned GLOs" (v7.2+) or the GLO1..8 columns with a "Yes" state
         Set ids = New Collection
-        If ColOf("Aligned GLOs") > 0 Then
+        If ColOf("Aligned GLOs") > 0 And Len(Trim$(V(r, "Aligned GLOs") & V(r, "Alignment Mark"))) > 0 Then
             For Each x In Numbers(V(r, "Aligned GLOs"))
                 If x >= 1 And x <= 8 Then AddUnique ids, CStr(x)
             Next x
