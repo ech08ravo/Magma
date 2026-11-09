@@ -2,11 +2,22 @@
 <!--
   ════════════════════════════════════════════════════════════════════════
   Curriculum Framework Dashboard
-  Version: 7.0 (beta)
-  Last updated: 2026-11-06
+  Version: 7.1 (beta)
+  Last updated: 2026-11-09
   Schema:  see SCHEMA-v2.md (CALM-native)
   ════════════════════════════════════════════════════════════════════════
   CHANGELOG
+  v7.1 (2026-11-09) — Week view as a timeline.
+                      • Week view now uses the Trimester view's layout (study
+                        year × trimester, task cards) with week columns
+                        instead of AT groups, so every task, type, GLO and
+                        unit reads across each year in week order.
+                      • Guide weeks are used where a unit guide is loaded.
+                        Other tasks are placed by AT number in this view only
+                        (AT1 → Week 1, AT2 → Week 2 …), shown with a dashed
+                        card border and "Week from AT number". Exports and
+                        the other views are unchanged.
+                      • Week view is now available without unit guides.
   v7.0 (2026-11-06) — Optional local unit-guide weeks.
                       • Added an opt-in folder scan for unit-code-named PDFs.
                         Reads only “When and how to submit your work” and
@@ -326,7 +337,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Curriculum Framework Dashboard v7.0 beta — CALM</title>
+<title>Curriculum Framework Dashboard v7.1 beta — CALM</title>
 <!-- Libraries load from lib/ next to this file (works offline); if lib/ is missing, fall back to the CDN. -->
 <script src="lib/three.min.js"></script>
 <script src="lib/papaparse.min.js"></script>
@@ -628,6 +639,16 @@
   .timeline-alignment .timeline-glo-key-item { gap: 0; width: 12px; height: 12px; }
   .timeline-alignment .ps-mark { width: 12px; height: 12px; }
   .timeline-no-alignment { color: #626b76; font-size: 8px; }
+  /* Week view: same chart as Trimester view, but week columns instead of AT groups.
+     Trimester widths come from --tri-cols so week columns line up across years. */
+  .timeline-chart.week-mode .timeline-axis { grid-template-columns: 68px var(--tri-cols); }
+  .timeline-chart.week-mode .timeline-trimesters { grid-template-columns: var(--tri-cols); }
+  .timeline-week-head { border-color: #8a929c; }
+  .timeline-at-group[data-week="none"] .timeline-week-head { border-color: #d7dbe0; color: #8a929c; }
+  .timeline-card.week-from-at { border-style: dashed; border-left-style: solid; }
+  .timeline-week-source { margin-top: 4px; font-size: 8px; color: #626b76; }
+  .timeline-week-source.guide { color: #2f5f8f; font-weight: 600; }
+  .timeline-legend-dashed { display: inline-block; width: 18px; height: 11px; border: 1px dashed #8a929c; border-left: 3px solid #8a929c; border-radius: 3px; vertical-align: -1px; }
   .timeline-empty { padding: 14px 8px; text-align: center; color: #626b76; font-size: 11px; }
   @media (max-width: 700px) {
     #assessment-timeline-panel { top: 12px; right: 8px; bottom: 12px; width: calc(100vw - 16px); padding: 14px; }
@@ -1047,7 +1068,7 @@
 
 <div class="ui-layer header">
   <div>
-    <h1 id="dashboard-title">Curriculum Framework Dashboard <span style="font-size:14px;color:var(--text-dim);" title="See &lt;!-- CHANGELOG --&gt; in the HTML source for version history">v7.0 beta</span></h1>
+    <h1 id="dashboard-title">Curriculum Framework Dashboard <span style="font-size:14px;color:var(--text-dim);" title="See &lt;!-- CHANGELOG --&gt; in the HTML source for version history">v7.1 beta</span></h1>
     <div class="subtitle" id="dashboard-subtitle">Drop the prepared SEBE files (Student Pathways + Units by Assessment Tasks; Course Data is optional) to populate the model.</div>
   </div>
   <div class="controls-row">
@@ -1243,10 +1264,10 @@
   </div>
   <div class="timeline-view-toolbar" role="group" aria-label="Assessment timeline view">
     <button class="timeline-view-btn" type="button" data-timeline-view="trimester" aria-pressed="true" onclick="setTimelineView('trimester')">Trimester</button>
-    <button class="timeline-view-btn" type="button" data-timeline-view="week" aria-pressed="false" disabled title="Load local unit guides to enable guide-sourced weeks." onclick="setTimelineView('week')">Week</button>
+    <button class="timeline-view-btn" type="button" data-timeline-view="week" aria-pressed="false" disabled title="Show tasks by week." onclick="setTimelineView('week')">Week</button>
     <button class="timeline-view-btn" type="button" data-timeline-view="list" aria-pressed="false" onclick="setTimelineView('list')">List</button>
     <button class="timeline-view-btn" type="button" data-timeline-view="summary" aria-pressed="false" onclick="setTimelineView('summary')">Summary</button>
-    <span class="timeline-view-hint" id="timeline-view-hint">Week view shows weeks extracted from optional local unit guides.</span>
+    <span class="timeline-view-hint" id="timeline-view-hint">Week view uses unit-guide weeks when loaded; otherwise AT1 → Week 1, AT2 → Week 2 …</span>
   </div>
   <div class="report-body" id="timeline-body"></div>
   <div class="report-export-row timeline-export-row">
@@ -3799,10 +3820,10 @@ function renderAssessmentTimeline() {
   const guideWeekRows = timelineGuideWeekRows(visibleRecords);
   const weekButton = document.querySelector('.timeline-view-btn[data-timeline-view="week"]');
   if (weekButton) {
-    weekButton.disabled = guideWeekRows.length === 0;
+    weekButton.disabled = visibleRecords.length === 0;
     weekButton.title = guideWeekRows.length
-      ? 'Show submission weeks extracted from local unit guides.'
-      : 'No matching guide-sourced weeks in this timeline. Select a Unit-Guides folder on the load screen.';
+      ? 'Show tasks by week: guide weeks where a unit guide gives one, otherwise the AT number (AT1 → Week 1).'
+      : 'Show tasks by week. No unit guide weeks are loaded, so each task is placed by its AT number (AT1 → Week 1, AT2 → Week 2 …).';
   }
   const exportRows = buildTimelineExportRows();
   exportCount.textContent = `${exportRows.length} rows · all timeline tasks`;
@@ -3815,11 +3836,10 @@ function renderAssessmentTimeline() {
     ? `${selectedCourse.title} · ${selectedCourse.units.length} units · ${visibleRecords.length} assessment tasks shown`
     : `${courses.length} related course${courses.length === 1 ? '' : 's'} · ${visibleRecords.length} of ${records.length} assessment tasks shown`;
   document.getElementById('timeline-note').textContent = timelineViewMode === 'week'
-    ? 'Guide-sourced weeks are read only from “When and how to submit your work.” Check the quoted guide text; the dashboard cannot confirm whether every listed week is a due date.'
+    ? 'Weeks come from local unit guides (“When and how to submit your work”) where one is loaded; check the quoted guide text in each card’s tooltip. Tasks without a guide week are placed by AT number in this view only (AT1 → Week 1, AT2 → Week 2 …). Those cards have a dashed border and are not due dates.'
     : 'No due weeks are included in these views or exports. Tasks are grouped by AT number (AT1/AT2/AT3) within each unit teaching trimester; this grouping is not a due-date estimate. Units offered in multiple trimesters appear in each one. Hover over a task card to read its full assessment description.';
-  document.getElementById('timeline-legend').innerHTML = timelineViewMode === 'week'
-    ? '<span class="guide-source-badge">Local unit guide</span><span>Guide and excerpt are shown for verification.</span>'
-    : `
+  document.getElementById('timeline-legend').innerHTML = `
+    ${timelineViewMode === 'week' ? '<span class="timeline-legend-item"><i class="timeline-legend-dashed"></i> Week from AT number (no guide week)</span>' : ''}
     <span>GLO color identifies the outcome; icon shape shows task alignment:</span>
     ${[
       ['aolHurdle', 'AoL + hurdle'],
@@ -3840,7 +3860,9 @@ function renderAssessmentTimeline() {
     const repeated = repeatedWeight ? `${repeatedWeight[1]} × ${repeatedWeight[2]}%` : '';
     return [...new Set([percentages[0], repeated, ...percentages.slice(1)].filter(Boolean))].join(' / ');
   };
-  const taskCard = ({ course, unit, at }) => {
+  // weekInfo (Week view only): { source: 'guide' | 'at' | 'none', week, part, evidence, fileName }
+  const taskCard = ({ course, unit, at }, weekInfo) => {
+    if (!weekInfo || typeof weekInfo !== 'object') weekInfo = null;   // .map() passes an index
     const assurance = timelineAssurance(at);
     const markKind = taskMarkKind(at);
     const markLabel = TASK_MARK_LABELS[markKind];
@@ -3860,7 +3882,17 @@ function renderAssessmentTimeline() {
       at.participation ? `Participation: ${at.participation}` : '',
       at.studentOutput ? `Student output: ${at.studentOutput}` : ''
     ].filter(Boolean).join(' · ');
-    return `<article class="timeline-card ${assurance === 'aol_hurdle' ? 'assurance-aol-hurdle' : assurance === 'aol_nonhurdle' ? 'assurance-aol' : assurance === 'hurdle_non_aol' ? 'assurance-hurdle' : ''}" data-keyword-matches="${timelineKeywordMatches(at).join(',')}" title="${escapeAttr(hoverDetails)}">
+    const weekNote = !weekInfo ? ''
+      : weekInfo.source === 'guide'
+        ? `Week ${weekInfo.week}${weekInfo.part ? ` (${weekInfo.part})` : ''} from ${weekInfo.fileName}, “When and how to submit your work”: ${weekInfo.evidence || 'submission section'}. Verify against the guide.`
+        : weekInfo.source === 'at'
+          ? `Week ${weekInfo.week} assigned from the AT number for this view only; no guide week is loaded. Not a due date.`
+          : 'No guide week and no AT number, so this task has no week.';
+    const weekLine = !weekInfo ? ''
+      : `<div class="timeline-week-source${weekInfo.source === 'guide' ? ' guide' : ''}">${weekInfo.source === 'guide'
+          ? `Guide: Wk ${weekInfo.week}${weekInfo.part ? ` (${escapeHtml(weekInfo.part)})` : ''}`
+          : weekInfo.source === 'at' ? 'Week from AT number' : 'No week'}</div>`;
+    return `<article class="timeline-card ${assurance === 'aol_hurdle' ? 'assurance-aol-hurdle' : assurance === 'aol_nonhurdle' ? 'assurance-aol' : assurance === 'hurdle_non_aol' ? 'assurance-hurdle' : ''}${weekInfo && weekInfo.source !== 'guide' ? ' week-from-at' : ''}" data-keyword-matches="${timelineKeywordMatches(at).join(',')}" title="${escapeAttr([weekNote, hoverDetails].filter(Boolean).join(' · '))}">
       <div class="timeline-card-title">${escapeHtml(unit.code)} · ${escapeHtml(at.number || 'AT')}</div>
       <div class="timeline-assessment-title" title="${escapeAttr(at.title || 'Assessment title not supplied')}">${escapeHtml(at.title || 'Assessment title not supplied')}</div>
       <div class="timeline-card-summary">
@@ -3869,6 +3901,7 @@ function renderAssessmentTimeline() {
         <span>AoL type: ${escapeHtml(at.type === 'NA' ? 'N/A' : at.type || '—')}</span>
       </div>
       <div class="timeline-alignment" aria-label="GLO alignment">${alignment}</div>
+      ${weekLine}
     </article>`;
   };
   const axis = `<div class="timeline-axis">
@@ -3961,21 +3994,83 @@ function renderAssessmentTimeline() {
         </tbody>
       </table>
     </div>` : '<div class="timeline-empty">No assessment tasks are available for this selection.</div>';
-  const weekView = guideWeekRows.length ? `
-    <div class="timeline-list-scroll">
-      <table class="timeline-week-table">
-        <caption>Weeks identified from the guide submission section. Verify each quote against the source guide.</caption>
-        <thead><tr><th scope="col">Week</th><th scope="col">Course</th><th scope="col">Unit / AT</th><th scope="col">Assessment</th><th scope="col">Guide part</th><th scope="col">Source evidence</th></tr></thead>
-        <tbody>${guideWeekRows.map(({ course, unit, at, guide, guideWeek }) => `<tr>
-          <td><strong>Week ${guideWeek.week}</strong></td>
-          <td>${escapeHtml(course.code)}</td>
-          <td>${escapeHtml(unit.code)} · ${escapeHtml(at.number || `AT${guideAssessmentNumber(at.number) || ''}`)}</td>
-          <td>${escapeHtml(at.title || '(no CALM title)')}</td>
-          <td>${escapeHtml(guideWeek.part || '—')}</td>
-          <td><span class="guide-source-badge">${escapeHtml(guide.fileName)}</span><span class="timeline-week-evidence">${escapeHtml(guideWeek.evidence || 'Submission section')}</span></td>
-        </tr>`).join('')}</tbody>
-      </table>
-    </div>` : '<div class="timeline-empty">No guide weeks match the units and assessment tasks in this timeline. Load unit guides from the upload screen.</div>';
+  // Week view: the Trimester view's year × trimester chart with week columns
+  // instead of AT groups. Guide weeks where a unit guide gives them; otherwise
+  // the AT number becomes the week (AT1 → Week 1 …) in this view only.
+  const weekView = (() => {
+    if (!visibleRecords.length) return '<div class="timeline-empty">No assessment tasks are available for this selection.</div>';
+    const weekInfosFor = record => {
+      const guideWeeks = unitGuideData.size ? guideWeeksForTask(record.unit, record.at) : null;
+      if (guideWeeks) {
+        return guideWeeks.weeks.map(week => ({
+          source: 'guide', week: week.week, part: week.part || '',
+          evidence: week.evidence || '', fileName: guideWeeks.guide.fileName
+        }));
+      }
+      const atNumber = guideAssessmentNumber(record.at.number);
+      return [atNumber === null ? { source: 'none', week: null } : { source: 'at', week: atNumber }];
+    };
+    const entries = [];
+    visibleRecords.forEach(record => {
+      const trimesters = timelineTrimesterKeys(record.unit);
+      const infos = weekInfosFor(record);
+      (trimesters.length ? trimesters : [null]).forEach(trimester =>
+        infos.forEach(info => entries.push({ record, info, trimester })));
+    });
+    const weekKey = info => info.week === null ? 'none' : String(info.week);
+    const sortWeeks = keys => [...keys].sort((a, b) =>
+      (a === 'none') - (b === 'none') || Number(a) - Number(b));
+    const weeksIn = list => sortWeeks(new Set(list.map(entry => weekKey(entry.info))));
+    const COLUMN_WIDTH = 150;
+    // Same week columns in every year, so a trimester's weeks line up down the chart
+    const trimesterWeeks = [1, 2, 3].map(trimester => weeksIn(entries.filter(entry => entry.trimester === trimester)));
+    const trimesterWidths = trimesterWeeks.map(weeks => Math.max(weeks.length ? 300 : 160, weeks.length * COLUMN_WIDTH));
+    const weekColumns = (list, weeks) => {
+      if (!weeks.length) {
+        return '<div class="timeline-at-groups" style="grid-template-columns:minmax(0,1fr)"><div class="timeline-at-group"><div class="timeline-card-meta">No tasks</div></div></div>';
+      }
+      return `<div class="timeline-at-groups" style="grid-template-columns:repeat(${weeks.length}, minmax(0, 1fr))">${weeks.map(key => {
+        const items = list.filter(entry => weekKey(entry.info) === key).sort((a, b) =>
+          a.record.unit.code.localeCompare(b.record.unit.code) ||
+          String(a.record.at.number || '').localeCompare(String(b.record.at.number || ''), undefined, { numeric: true }) ||
+          a.record.course.code.localeCompare(b.record.course.code));
+        return `<div class="timeline-at-group" data-week="${key}">
+          <div class="timeline-at-head timeline-week-head">${key === 'none' ? 'No week' : `Week ${key}`} <span>(${items.length})</span></div>
+          <div class="timeline-cards">${items.map(entry => taskCard(entry.record, entry.info)).join('') || '<div class="timeline-card-meta">—</div>'}</div>
+        </div>`;
+      }).join('')}</div>`;
+    };
+    const years = [...new Set(visibleRecords.map(record => record.unit.year))].sort((a, b) => {
+      const ai = curriculum.years.indexOf(a), bi = curriculum.years.indexOf(b);
+      return ai === -1 || bi === -1 ? a - b : ai - bi;
+    });
+    const yearRows = years.map(year => {
+      const yearEntries = entries.filter(entry => entry.record.unit.year === year);
+      const items = visibleRecords.filter(record => record.unit.year === year);
+      const trimesterSections = [1, 2, 3].map((trimester, index) =>
+        `<section class="timeline-trimester">${weekColumns(yearEntries.filter(entry => entry.trimester === trimester), trimesterWeeks[index])}</section>`
+      ).join('');
+      const noTrimester = yearEntries.filter(entry => entry.trimester === null);
+      const noTrimesterHtml = noTrimester.length
+        ? `<section class="timeline-trimester timeline-no-trimester">
+            <div class="timeline-trimester-head">Teaching period not supplied</div>
+            ${weekColumns(noTrimester, weeksIn(noTrimester))}
+          </section>`
+        : '';
+      return `<section class="timeline-year">
+        <div class="timeline-year-label">
+          ${escapeHtml(yearLabel(year))}
+          ${timelineYearGloSummary(items, year)}
+        </div>
+        <div class="timeline-year-content">
+          <div class="timeline-trimesters">${trimesterSections}</div>
+          ${noTrimesterHtml}
+        </div>
+      </section>`;
+    }).join('');
+    const totalWidth = 68 + trimesterWidths.reduce((sum, width) => sum + width, 0);
+    return `<div class="timeline-scroll"><div class="timeline-chart week-mode" style="--tri-cols:${trimesterWidths.map(width => `minmax(${width}px, 1fr)`).join(' ')};min-width:${totalWidth}px">${axis}${yearRows}</div></div>`;
+  })();
 
   const byYear = new Map();
   visibleRecords.forEach(record => {
