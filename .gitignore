@@ -2,7 +2,13 @@
 **/.DS_Store
 *.mp4
 
-# CALM exports and outputs: institutional data, keep out of git
+# CALM data and anything built from it (exports, course maps, statistics):
+# institutional data, keep out of git. Local copies stay on disk.
 CALM-dashboard-*/
-SEBE-statistics.xlsx
+*.xlsx
+*.xlsm
+*.csv
+archive/**/*.zip
+# ...except the blank builder that colleagues get (no data in it)
+!v8/Curriculum-Map-Builder/Curriculum Map Builder (blank).xlsm
 ~$*
