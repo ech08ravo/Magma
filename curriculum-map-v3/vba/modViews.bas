@@ -1078,3 +1078,65 @@ Private Sub StyleButton(ByVal s As Shape, ByVal fillHex As String)
     s.TextFrame2.VerticalAnchor = msoAnchorMiddle
     s.Placement = xlFreeFloating
 End Sub
+
+' ---- blank starter workbook ----------------------------------------------
+' Strip the data and views, keep Lists and Legend, and leave a start sheet named
+' Timeline with only the Import button. Saved under a new name so the current file is untouched.
+Public Function MakeBlankBuilder(ByVal savePath As String) As String
+    Dim ws As Worksheet, i As Long, keep As Boolean
+    On Error GoTo Fail
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.DisplayAlerts = False
+    Set ws = ThisWorkbook.Worksheets.Add(Before:=ThisWorkbook.Worksheets(1))
+    ws.Name = "Start_tmp"
+    For i = ThisWorkbook.Worksheets.Count To 1 Step -1
+        Set ws = ThisWorkbook.Worksheets(i)
+        keep = (ws.Name = "Start_tmp" Or ws.Name = "Lists" Or ws.Name = "Legend")
+        If Not keep Then ws.Visible = xlSheetVisible: ws.Delete
+    Next i
+    Set ws = ThisWorkbook.Worksheets("Start_tmp")
+    ws.Name = "Timeline"
+    ws.Activate
+    ActiveWindow.DisplayGridlines = False
+    ws.Cells.Font.Name = "Calibri": ws.Cells.Font.Size = 11
+    ' all text in column A: the GLO/mode click handler ignores column A
+    ws.Columns(1).ColumnWidth = 110
+    ws.Range("A1").Value = "Curriculum Map Builder"
+    ws.Range("A1").Font.Size = 18: ws.Range("A1").Font.Bold = True
+    ws.Range("A2").Value = "Blank: no course loaded yet."
+    ws.Range("A2").Font.Color = HexRGB("#6B7280")
+    ws.Range("A5").Value = "1.  In the curriculum dashboard, select your course or units and export the assessment timeline (.xlsx or .csv)."
+    ws.Range("A6").Value = "2.  Click Import export" & GEll() & " above and choose that file."
+    ws.Range("A7").Value = "3.  The Timeline, Weeks, AOL type balance, All tasks and Summary sheets are built from it (about 20 seconds)."
+    ws.Range("A9").Value = "Tip: save the result under your course's name (File " & ChrW(9656) & " Save As) and keep this blank copy for next time."
+    ws.Range("A9").Font.Italic = True
+    ws.Range("A11").Value = "Task type codes can be edited on the Lists sheet; the Legend sheet explains the marks and views."
+    ws.Range("A11").Font.Color = HexRGB("#6B7280")
+    Dim s As Shape
+    Set s = ws.Shapes.AddShape(msoShapeRoundedRectangle, ws.Range("A3").Left + 2, ws.Range("A3").Top + 2, 130, 24)
+    s.Name = "btnImport": s.OnAction = "ImportExport"
+    s.TextFrame2.TextRange.Text = "Import export" & GEll()
+    StyleButton s, "#2B2F3A"
+    ws.Rows(3).RowHeight = 30
+    ws.Move Before:=ThisWorkbook.Worksheets(1)
+    If SheetExists("Legend") Then ThisWorkbook.Worksheets("Legend").Move After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count)
+    ws.Activate: ws.Range("A1").Select
+    ThisWorkbook.SaveAs Filename:=savePath, FileFormat:=52
+    MakeBlankBuilder = "OK " & ThisWorkbook.Worksheets.Count & " sheets"
+Done:
+    Application.DisplayAlerts = True
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Exit Function
+Fail:
+    MakeBlankBuilder = "ERR " & Err.Number & " " & Err.Description
+    Resume Done
+End Function
+
+Private Function SheetExists(ByVal n As String) As Boolean
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Worksheets(n)
+    SheetExists = Not ws Is Nothing
+End Function

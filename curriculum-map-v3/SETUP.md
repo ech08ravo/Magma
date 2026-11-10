@@ -29,6 +29,13 @@ Colleagues only need this if they want to reload code; they don't need it to use
 
 ## Using the builder
 
+Give colleagues **`Curriculum Map Builder (blank).xlsm`**: it has no course loaded, only a
+start sheet with the **Import export…** button. They import their own dashboard export, then
+Save As under their course name and keep the blank copy for next time.
+`Curriculum Map Builder.xlsm` is the same builder with the S466 example loaded.
+To remake the blank after a code change: open the example builder, run `ReloadModules`, save,
+then run `MakeBlankBuilder` with the full path of the blank file.
+
 - **Import export…** (button on Timeline and Tasks): choose a dashboard timeline export
   (.xlsx or .csv, from dashboard v7.4+ with unit guides loaded for guide weeks and GLOs).
   Planning columns you have already filled in (Tools, Assessment type, Planned Weeks, and any
