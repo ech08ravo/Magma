@@ -136,17 +136,22 @@ Private Sub RestoreFilterState(ByVal st As Collection)
             Set ws = ThisWorkbook.Worksheets(CStr(n))
             For g = 0 To 7
                 c = 1 + BLOCK * g                       ' offset within B4:BQ5 (B = 1)
-                If IsNumeric(v(1, c)) Then ws.Cells(4, 2 + BLOCK * g).Value = CLng(v(1, c))
+                If HasNumber(v(1, c)) Then ws.Cells(4, 2 + BLOCK * g).Value = CLng(v(1, c))
             Next g
             For g = 0 To 2
                 c = 1 + BLOCK * g
-                If IsNumeric(v(2, c)) Then ws.Cells(5, 2 + BLOCK * g).Value = CLng(v(2, c))
+                If HasNumber(v(2, c)) Then ws.Cells(5, 2 + BLOCK * g).Value = CLng(v(2, c))
             Next g
-            If IsNumeric(v(2, 1 + BLOCK * 4)) Then ws.Cells(5, 2 + BLOCK * 4).Value = v(2, 1 + BLOCK * 4)
-            If IsNumeric(v(2, 1 + BLOCK * 5)) Then ws.Cells(5, 2 + BLOCK * 5).Value = v(2, 1 + BLOCK * 5)
+            If HasNumber(v(2, 1 + BLOCK * 4)) Then ws.Cells(5, 2 + BLOCK * 4).Value = v(2, 1 + BLOCK * 4)
+            If HasNumber(v(2, 1 + BLOCK * 5)) Then ws.Cells(5, 2 + BLOCK * 5).Value = v(2, 1 + BLOCK * 5)
         End If
     Next n
 End Sub
+
+' a cleared cell is Empty, which IsNumeric counts as 0: keep the new sheet's default instead
+Private Function HasNumber(ByVal x As Variant) As Boolean
+    If Not IsEmpty(x) Then HasNumber = IsNumeric(x)
+End Function
 
 ' ---- small formatting helpers --------------------------------------------
 Private Sub Fmt(ByVal rng As Range, Optional ByVal bold As Boolean = False, Optional ByVal size As Double = 0, _
