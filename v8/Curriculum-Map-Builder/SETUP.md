@@ -1,6 +1,6 @@
 # Curriculum Map Builder: one-time setup
 
-This creates `Curriculum Map Builder.xlsm` in this folder (`curriculum-map-v3/`).
+This creates `Curriculum Map Builder.xlsm` in this folder (`v8/Curriculum-Map-Builder/`).
 You do it once. After that, all code updates load from the `vba/` folder.
 
 ## Steps (Mac Excel)
@@ -11,7 +11,7 @@ You do it once. After that, all code updates load from the `vba/` folder.
 3. **Save it as macro-enabled.** File ▸ **Save As**:
    - Name: `Curriculum Map Builder`
    - Format: **Excel Macro-Enabled Workbook (.xlsm)**
-   - Where: this folder, `GitHub/magma/curriculum-map-v3/`, next to the `vba` folder.
+   - Where: this folder, `GitHub/magma/v8/Curriculum-Map-Builder/`, next to the `vba` folder.
 4. **Add the installer.** Tools ▸ **Macro** ▸ **Visual Basic Editor** (or Opt+F11).
    File ▸ **Import File…** ▸ choose `vba/modInstaller.bas`.
 5. **Save** (Cmd+S) and close the Visual Basic Editor.
@@ -19,7 +19,7 @@ You do it once. After that, all code updates load from the `vba/` folder.
 That's it. Tell Claude it's done; Claude loads the rest of the code and tests it.
 
 If Excel asks to **grant access** to the `vba` folder, click **Grant Access** or
-**Select**, then pick the `curriculum-map-v3` folder.
+**Select**, then pick the `Curriculum-Map-Builder` folder.
 
 ## Windows Excel (for colleagues later)
 

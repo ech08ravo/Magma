@@ -21,7 +21,7 @@ Public Sub ReloadModules()
     folder = ThisWorkbook.Path & sep & "vba" & sep
     If Len(Dir(folder & INSTALLER & ".bas")) = 0 Then
         MsgBox "Can't find the code folder:" & vbLf & folder & vbLf & vbLf & _
-               "Keep this workbook in the curriculum-map-v3 folder, next to its 'vba' folder.", vbExclamation
+               "Keep this workbook in the Curriculum-Map-Builder folder, next to its 'vba' folder.", vbExclamation
         Exit Sub
     End If
 
